@@ -2,7 +2,7 @@
  * Copyright (c) 2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
- * Copyright (C) 2010-2019 NXP Semiconductors
+ * Copyright (C) 2010-2020 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -251,7 +251,8 @@ NFCSTATUS phDnldNfc_CheckIntegrity(uint8_t bChipVer, pphDnldNfc_Buff_t pCRCData,
                ((PHDNLDNFC_HWVER_PN551_MRA1_0 == bChipVer)))||
            ( ((nfcFL.chipType == pn553) || (nfcFL.chipType == pn557)) &&
                ((PHDNLDNFC_HWVER_PN553_MRA1_0 == bChipVer) || (PHDNLDNFC_HWVER_PN553_MRA1_0_UPDATED & bChipVer)||((PHDNLDNFC_HWVER_PN557_MRA1_0 == bChipVer)))) ||
-           ( (nfcFL.chipType == sn100u) && (PHDNLDNFC_HWVER_VENUS_MRA1_0 & bChipVer))) {
+           ( (nfcFL.chipType == sn100u) && (PHDNLDNFC_HWVER_VENUS_MRA1_0 & bChipVer)) ||
+           ( (nfcFL.chipType == sn220u) && (PHDNLDNFC_HWVER_VULCAN_MRA1_0 & bChipVer))) {
         (gpphDnldContext->FrameInp.Type) = phDnldNfc_ChkIntg;
       } else {
         (gpphDnldContext->FrameInp.Type) = phDnldNfc_FTNone;
@@ -793,16 +794,21 @@ NFCSTATUS phDnldNfc_InitImgInfo(void) {
     gpphDnldContext->nxp_nfc_fw_len = ImageInfoLen;
     if ((NULL != gpphDnldContext->nxp_nfc_fw) &&
         (0 != gpphDnldContext->nxp_nfc_fw_len)) {
-      NXPLOG_FWDNLD_D("FW Major Version Num - %x",
-                      gpphDnldContext->nxp_nfc_fw[5]);
-      NXPLOG_FWDNLD_D("FW Minor Version Num - %x",
-                      gpphDnldContext->nxp_nfc_fw[4]);
+      uint16_t offsetFwMajorNum, offsetFwMinorNum;
+      if (nfcFL.chipType == sn220u) {
+        offsetFwMajorNum = ((uint16_t)(gpphDnldContext->nxp_nfc_fw[795]) << 8U);
+        offsetFwMinorNum = ((uint16_t)(gpphDnldContext->nxp_nfc_fw[794]));
+      }else {
+        offsetFwMajorNum = ((uint16_t)(gpphDnldContext->nxp_nfc_fw[5]) << 8U);
+        offsetFwMinorNum = ((uint16_t)(gpphDnldContext->nxp_nfc_fw[4]));
+      }
+      NXPLOG_FWDNLD_D("FW Major Version Num - %x", offsetFwMajorNum);
+      NXPLOG_FWDNLD_D("FW Minor Version Num - %x", offsetFwMinorNum);
+      /* get the FW version */
+      wFwVer = (offsetFwMajorNum | offsetFwMinorNum);
+
       NXPLOG_FWDNLD_D("FW Image Length - %d", ImageInfoLen);
       NXPLOG_FWDNLD_D("FW Image Info Pointer - %p", pImageInfo);
-
-      /* get the FW version */
-      wFwVer = (((uint16_t)(gpphDnldContext->nxp_nfc_fw[5]) << 8U) |
-                (gpphDnldContext->nxp_nfc_fw[4]));
       wStatus = NFCSTATUS_SUCCESS;
     } else {
       NXPLOG_FWDNLD_E("Image details extraction Failed!!");
@@ -1031,8 +1037,8 @@ NFCSTATUS phDnldNfc_LoadFW(const char* pathName, uint8_t** pImgInfo,
 *******************************************************************************/
 NFCSTATUS phDnldNfc_LoadBinFW(uint8_t** pImgInfo, uint32_t* pImgInfoLen) {
   FILE* pFile = NULL;
-  uint32_t fileSize = 0;
-  uint32_t bytesRead = 0;
+  long fileSize = 0;
+  long bytesRead = 0;
   long ftellFileSize = 0;
 
   /* check for path name */

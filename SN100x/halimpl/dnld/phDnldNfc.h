@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2019 NXP Semiconductors
+ *  Copyright 2010-2020 NXP
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ typedef void (*pphDnldNfc_RspCb_t)(void* pContext, NFCSTATUS wStatus,
 /* Timeout value to wait for response from NFCC */
 #define PHDNLDNFC_RSP_TIMEOUT (2500)
 /* Timeout value to wait for dnld  reset rsp */
-#define PHDNLDNFC_RESET_RSP_TIMEOUT (15)
+#define PHDNLDNFC_RESET_RSP_TIMEOUT (10)
 
 #define PHLIBNFC_FWDNLD_SESSNOPEN (0x01U)   /* download session is Open */
 #define PHLIBNFC_FWDNLD_SESSNCLOSED (0x00U) /* download session is Closed */
@@ -60,6 +60,7 @@ typedef void (*pphDnldNfc_RspCb_t)(void* pContext, NFCSTATUS wStatus,
 #define PHDNLDNFC_HWVER_PN553_MRA1_0_UPDATED (0x40U)
 #define PHDNLDNFC_HWVER_PN557_MRA1_0 (0x01U)
 #define PHDNLDNFC_HWVER_VENUS_MRA1_0 (0xA0U)
+#define PHDNLDNFC_HWVER_VULCAN_MRA1_0 (0xC0U)
 /*
  * Enum definition contains Download Life Cycle States
  */

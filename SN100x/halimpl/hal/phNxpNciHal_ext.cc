@@ -38,6 +38,8 @@ extern phNxpNciHal_Control_t nxpncihal_ctrl;
 extern phNxpNciProfile_Control_t nxpprofile_ctrl;
 extern phNxpNci_getCfg_info_t* mGetCfg_info;
 
+extern bool_t gsIsFwRecoveryRequired;
+
 extern uint32_t cleanup_timer;
 extern bool nfc_debug_enabled;
 uint8_t icode_detected = 0x00;
@@ -89,7 +91,7 @@ static NFCSTATUS phNxpNciHal_ext_process_nfc_init_rsp(uint8_t* p_ntf,
 *******************************************************************************/
 void phNxpNciHal_ext_init(void) {
   icode_detected = 0x00;
-  if(nfcFL.chipType != sn100u){
+  if(nfcFL.chipType < sn100u){
     icode_send_eof = 0x00;
   }
   setEEModeDone = 0x00;
@@ -133,6 +135,19 @@ NFCSTATUS phNxpNciHal_process_ext_rsp(uint8_t* p_ntf, uint16_t* p_len) {
     if(gParserCreated)
       phNxpNciHal_parsePacket(p_ntf,*p_len);
   }
+#if(NXP_SRD == TRUE)
+  if (p_ntf[0] == 0x01 && p_ntf[1] == 0x00 && p_ntf[5] == 0x81 &&
+      p_ntf[23] == 0x82 && p_ntf[26] == 0xA0 && p_ntf[27] == 0xFE) {
+    if (p_ntf[29] == 0x01) {
+      nxpprofile_ctrl.profile_type = SRD_PROFILE;
+    } else if (p_ntf[29] == 0x00) {
+      nxpprofile_ctrl.profile_type = NFC_FORUM_PROFILE;
+    }
+  } else if(p_ntf[0] == 0x60 && p_ntf[1] == 0x07 && p_ntf[2] == 0x01 &&
+            p_ntf[3] == 0xE2){
+      nxpprofile_ctrl.profile_type = NFC_FORUM_PROFILE;
+  }
+#endif
 #endif
 
   if (p_ntf[0] == 0x61 && p_ntf[1] == 0x05 && *p_len < 14) {
@@ -294,7 +309,7 @@ NFCSTATUS phNxpNciHal_process_ext_rsp(uint8_t* p_ntf, uint16_t* p_len) {
   }
   phNxpNciHal_ext_process_nfc_init_rsp(p_ntf, p_len);
   if(p_ntf[0] == 0x42 && p_ntf[1] == 0x01 && p_ntf[2] == 0x01 && p_ntf[3] == 0x00) {
-    if(nxpncihal_ctrl.hal_ext_enabled == TRUE && nfcFL.chipType == sn100u) {
+    if(nxpncihal_ctrl.hal_ext_enabled == TRUE && nfcFL.chipType >= sn100u) {
       nxpncihal_ctrl.nci_info.wait_for_ntf = TRUE;
       NXPLOG_NCIHAL_D(" Mode set received");
     }
@@ -304,9 +319,9 @@ NFCSTATUS phNxpNciHal_process_ext_rsp(uint8_t* p_ntf, uint16_t* p_len) {
     icode_detected = 0x01;
     p_ntf[21] = 0x01;
     p_ntf[22] = 0x01;
-  } else if (nfcFL.chipType != sn100u && icode_detected == 1 && icode_send_eof == 2) {
+  } else if (nfcFL.chipType < sn100u && icode_detected == 1 && icode_send_eof == 2) {
     icode_send_eof = 3;
-  } else if (nfcFL.chipType != sn100u && p_ntf[0] == 0x00 && p_ntf[1] == 0x00 &&
+  } else if (nfcFL.chipType < sn100u && p_ntf[0] == 0x00 && p_ntf[1] == 0x00 &&
           icode_detected == 1) {
     if (icode_send_eof == 3) {
       icode_send_eof = 0;
@@ -320,13 +335,13 @@ NFCSTATUS phNxpNciHal_process_ext_rsp(uint8_t* p_ntf, uint16_t* p_len) {
         p_ntf[p_ntf[2] + 2] |= 0x01;
       }
     }
-  } else if (nfcFL.chipType != sn100u && p_ntf[2] == 0x02 &&
+  } else if (nfcFL.chipType < sn100u && p_ntf[2] == 0x02 &&
           p_ntf[1] == 0x00 && icode_detected == 1) {
     NXPLOG_NCIHAL_D("> ICODE EOF response do not send to upper layer");
   } else if (p_ntf[0] == 0x61 && p_ntf[1] == 0x06 && icode_detected == 1) {
     NXPLOG_NCIHAL_D("> Polling Loop Re-Started");
     icode_detected = 0;
-    if (nfcFL.chipType != sn100u)
+    if (nfcFL.chipType < sn100u)
       icode_send_eof = 0;
   } else if (*p_len == 4 && p_ntf[0] == 0x40 && p_ntf[1] == 0x02 &&
              p_ntf[2] == 0x01 && p_ntf[3] == 0x06) {
@@ -339,12 +354,21 @@ NFCSTATUS phNxpNciHal_process_ext_rsp(uint8_t* p_ntf, uint16_t* p_len) {
     p_ntf[4] = 0x00;
     *p_len = 5;
   }
-  if((p_ntf[0] == 0x60 && p_ntf[1] == 0x07 && p_ntf[2] == 0x01 && ((p_ntf[3] == 0xE5)
-  ||(p_ntf[3] == 0x60)))||(p_ntf[0] == 0x61 && p_ntf[1] == 0x21 && p_ntf[2] == 0x00))
-  {
+
+  if (p_ntf[0] == 0x60 && p_ntf[1] == 0x07 && p_ntf[2] == 0x01) {
+    if (p_ntf[3] == 0xEA) {
+      gsIsFwRecoveryRequired = true;
+      NXPLOG_NCIHAL_D("FW update required");
       status = NFCSTATUS_FAILED;
+    } else if ((p_ntf[3] == 0xE5) || (p_ntf[3] == 0x60)) {
       NXPLOG_NCIHAL_D("ignore core generic error");
-      return status;
+      status = NFCSTATUS_FAILED;
+    }
+    return status;
+  } else if (p_ntf[0] == 0x61 && p_ntf[1] == 0x21 && p_ntf[2] == 0x00) {
+    status = NFCSTATUS_FAILED;
+    NXPLOG_NCIHAL_D("ignore core generic error");
+    return status;
   }
   // 4200 02 00 01
   else if (p_ntf[0] == 0x42 && p_ntf[1] == 0x00 && ee_disc_done == 0x01) {
@@ -373,9 +397,8 @@ NFCSTATUS phNxpNciHal_process_ext_rsp(uint8_t* p_ntf, uint16_t* p_len) {
   } else if (p_ntf[0] == 0x41 && p_ntf[1] == 0x04 && cleanup_timer != 0) {
     status = NFCSTATUS_FAILED;
     return status;
-  }
-  else if (*p_len == 4 && p_ntf[0] == 0x4F && p_ntf[1] == 0x11 &&
-           p_ntf[2] == 0x01) {
+  } else if (*p_len == 4 && p_ntf[0] == 0x4F && p_ntf[1] == 0x11 &&
+             p_ntf[2] == 0x01) {
     if (p_ntf[3] == 0x00) {
       NXPLOG_NCIHAL_D(
           ">  Workaround for ISO-DEP Presence Check, ignore response and wait "
@@ -708,7 +731,8 @@ NFCSTATUS phNxpNciHal_write_ext(uint16_t* cmd_len, uint8_t* p_cmd_data,
     mfc_mode = false;
   }
 
-  if (bEnableMfcReader && (p_cmd_data[0] == 0x21 && p_cmd_data[1] == 0x00) &&
+  if (*cmd_len <= (NCI_MAX_DATA_LEN - 3) && bEnableMfcReader &&
+      (p_cmd_data[0] == 0x21 && p_cmd_data[1] == 0x00) &&
       (nxpprofile_ctrl.profile_type == NFC_FORUM_PROFILE)) {
     unsigned long retval = 0;
     if (p_cmd_data[2] == 0x04 && p_cmd_data[3] == 0x01 &&
@@ -739,17 +763,16 @@ NFCSTATUS phNxpNciHal_write_ext(uint16_t* cmd_len, uint8_t* p_cmd_data,
              (p_cmd_data[3] == 0x81 && p_cmd_data[4] == 0x01 &&
               p_cmd_data[5] == 0x03)) {
     NXPLOG_NCIHAL_D("> Going through the set host list");
-        if(nfcFL.chipType == sn100u)
+        if(nfcFL.chipType >= sn100u)
         {
-            *cmd_len = 11;
+            *cmd_len = 10;
 
-            p_cmd_data[2] = 0x08;
+            p_cmd_data[2] = 0x07;
 
             p_cmd_data[6] = 0x02;
             p_cmd_data[7] = 0x80;
             p_cmd_data[8] = 0x81;
-            p_cmd_data[9] = 0x82;
-            p_cmd_data[10] = 0xC0;
+            p_cmd_data[9] = 0xC0;
         }
         else
         {
@@ -761,7 +784,7 @@ NFCSTATUS phNxpNciHal_write_ext(uint16_t* cmd_len, uint8_t* p_cmd_data,
         }
     status = NFCSTATUS_SUCCESS;
   } else if (icode_detected) {
-    if (nfcFL.chipType != sn100u && (p_cmd_data[3] & 0x40) == 0x40 &&
+    if (nfcFL.chipType < sn100u && (p_cmd_data[3] & 0x40) == 0x40 &&
         (p_cmd_data[4] == 0x21 || p_cmd_data[4] == 0x22 ||
          p_cmd_data[4] == 0x24 || p_cmd_data[4] == 0x27 ||
          p_cmd_data[4] == 0x28 || p_cmd_data[4] == 0x29 ||
@@ -778,7 +801,7 @@ NFCSTATUS phNxpNciHal_write_ext(uint16_t* cmd_len, uint8_t* p_cmd_data,
   } else if (p_cmd_data[0] == 0x21 && p_cmd_data[1] == 0x03) {
     NXPLOG_NCIHAL_D("> Polling Loop Started");
     icode_detected = 0;
-    if(nfcFL.chipType != sn100u){
+    if(nfcFL.chipType < sn100u){
       icode_send_eof = 0;
     }
   }
@@ -957,6 +980,10 @@ NFCSTATUS phNxpNciHal_send_ext_cmd(uint16_t cmd_len, uint8_t* p_cmd) {
  ******************************************************************************/
 NFCSTATUS phNxpNciHal_send_ese_hal_cmd(uint16_t cmd_len, uint8_t* p_cmd) {
   NFCSTATUS status = NFCSTATUS_FAILED;
+  if (cmd_len > NCI_MAX_DATA_LEN) {
+    NXPLOG_NCIHAL_E("cmd_len exceeds limit NCI_MAX_DATA_LEN");
+    return status;
+  }
   nxpncihal_ctrl.cmd_len = cmd_len;
   memcpy(nxpncihal_ctrl.p_cmd_data, p_cmd, cmd_len);
   status = phNxpNciHal_process_ext_cmd_rsp(nxpncihal_ctrl.cmd_len,
@@ -1097,6 +1124,7 @@ NFCSTATUS request_EEPROM(phNxpNci_EEPROM_info_t* mEEPROM_info) {
       addr[1] = 0xED;
       break;
     case EEPROM_FLASH_UPDATE:
+      /* This flag is no more used in MW */
       fieldLen = 0x20;
       memIndex = 0x00;
       len = fieldLen + 4;
@@ -1144,6 +1172,37 @@ NFCSTATUS request_EEPROM(phNxpNci_EEPROM_info_t* mEEPROM_info) {
       addr[0] = 0xA0;
       addr[1] = 0x07;
       break;
+    case EEPROM_ISODEP_MERGE_SAK:
+      mEEPROM_info->update_mode = BYTEWISE;
+      b_position = 0;
+      memIndex = 0x00;
+      addr[0] = 0xA1;
+      addr[1] = 0x1B;
+      break;
+    case EEPROM_SRD_TIMEOUT:
+      mEEPROM_info->update_mode = BYTEWISE;
+      memIndex = 0x00;
+      fieldLen = 0x02;
+      len = fieldLen + 4;
+      addr[0] = 0xA1;
+      addr[1] = 0x17;
+      break;
+    case EEPROM_UICC1_SESSION_ID:
+      fieldLen = mEEPROM_info->bufflen;
+      len = fieldLen + 4;
+      memIndex = 0x00;
+      addr[0] = 0xA0;
+      addr[1] = 0xE4;
+      mEEPROM_info->update_mode = BYTEWISE;
+      break;
+    case EEPROM_UICC2_SESSION_ID:
+      fieldLen = mEEPROM_info->bufflen;
+      len = fieldLen + 4;
+      memIndex = 0x00;
+      addr[0] = 0xA0;
+      addr[1] = 0xE5;
+      mEEPROM_info->update_mode = BYTEWISE;
+      break;
     default:
       ALOGE("No valid request information found");
       break;
@@ -1156,7 +1215,6 @@ NFCSTATUS request_EEPROM(phNxpNci_EEPROM_info_t* mEEPROM_info) {
       addr[0],        // First byte of Address
       addr[1]         // Second byte of Address
   };
-
   uint8_t set_cfg_cmd_hdr[7] = {
       0x20,    0x02,  // set_cfg header
       len,            // len of following value
@@ -1183,6 +1241,13 @@ retryget:
     if (status != NFCSTATUS_SUCCESS) {
       ALOGE("failed to get requested memory address");
     } else if (mEEPROM_info->request_mode == GET_EEPROM_DATA) {
+      if (mEEPROM_info->bufflen == 0xFF) {
+        /* Max bufferlenth for single Get Config Command is 0xFF.
+         * If buffer length set to max value, reassign buffer value
+         * depends on response from Get Config command */
+        mEEPROM_info->bufflen =
+            *(nxpncihal_ctrl.p_rx_data + getCfgStartIndex + memIndex - 1);
+      }
       memcpy(mEEPROM_info->buffer,
              nxpncihal_ctrl.p_rx_data + getCfgStartIndex + memIndex,
              mEEPROM_info->bufflen);
@@ -1291,14 +1356,22 @@ NFCSTATUS phNxpNciHal_enableDefaultUICC2SWPline(uint8_t uicc2_sel) {
  * Returns          none
  *
  ******************************************************************************/
-void phNxpNciHal_prop_conf_lpcd() {
+void phNxpNciHal_prop_conf_lpcd(bool enableLPCD) {
   uint8_t cmd_get_lpcdval[] = { 0x20, 0x03, 0x03, 0x01, 0xA0, 0x68};
   vector<uint8_t> cmd_set_lpcdval{ 0x20, 0x02, 0x2E};
 
   if(NFCSTATUS_SUCCESS == phNxpNciHal_send_ext_cmd(sizeof(cmd_get_lpcdval), cmd_get_lpcdval)) {
     if(NFCSTATUS_SUCCESS == nxpncihal_ctrl.p_rx_data[3]) {
-      if(!(nxpncihal_ctrl.p_rx_data[17] & (1 << 7))) {
+      if(!(nxpncihal_ctrl.p_rx_data[17] & (1 << 7)) && enableLPCD) {
         nxpncihal_ctrl.p_rx_data[17] |= (1 << 7);
+        cmd_set_lpcdval.insert(cmd_set_lpcdval.end(), &nxpncihal_ctrl.p_rx_data[4],
+                (&nxpncihal_ctrl.p_rx_data[4] + cmd_set_lpcdval[2]));
+        if(NFCSTATUS_SUCCESS == phNxpNciHal_send_ext_cmd(cmd_set_lpcdval.size(),
+                &cmd_set_lpcdval[0])) {
+          return;
+        }
+      } else if(!enableLPCD && (nxpncihal_ctrl.p_rx_data[17] & (1 << 7))) {
+        nxpncihal_ctrl.p_rx_data[17] &= ~(1 << 7);
         cmd_set_lpcdval.insert(cmd_set_lpcdval.end(), &nxpncihal_ctrl.p_rx_data[4],
                 (&nxpncihal_ctrl.p_rx_data[4] + cmd_set_lpcdval[2]));
         if(NFCSTATUS_SUCCESS == phNxpNciHal_send_ext_cmd(cmd_set_lpcdval.size(),

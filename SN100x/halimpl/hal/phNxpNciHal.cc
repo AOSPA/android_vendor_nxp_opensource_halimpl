@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2020 NXP Semiconductors
+ * Copyright 2012-2020 NXP
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@
 #include <phNxpNciHal_NfcDepSWPrio.h>
 #include <phNxpNciHal_ext.h>
 #include <phTmlNfc.h>
-#include <phTmlNfc_i2c.h>
 #if(NXP_EXTNS == TRUE)
 #include "phNxpNciHal_nciParser.h"
 #endif
@@ -40,6 +39,7 @@
 #include <sys/stat.h>
 
 #include <android-base/stringprintf.h>
+#include "NfccTransportFactory.h"
 
 using android::base::StringPrintf;
 using namespace android::hardware::nfc::V1_1;
@@ -54,7 +54,7 @@ using android::base::WriteStringToFile;
 
 bool bEnableMfcExtns = false;
 bool bEnableMfcReader = false;
-bool bDisableLegacyMfcExtns = false;
+bool bDisableLegacyMfcExtns = true;
 
 /* Processing of ISO 15693 EOF */
 extern uint8_t icode_send_eof;
@@ -67,7 +67,8 @@ const char *rf_block_name = "NXP_RF_CONF_BLK_";
 static uint8_t read_failed_disable_nfc = false;
 /* FW download success flag */
 static uint8_t fw_download_success = 0;
-
+static std::vector<uint8_t> uicc1HciParams(0);
+static std::vector<uint8_t> uicc2HciParams(0);
 static uint8_t config_access = false;
 static uint8_t config_success = true;
 static ThreadMutex sHalFnLock;
@@ -80,17 +81,18 @@ phNxpNciProfile_Control_t nxpprofile_ctrl;
 
 /* TML Context */
 extern phTmlNfc_Context_t* gpphTmlNfc_Context;
+extern spTransport gpTransportObj;
+
 extern void phTmlNfc_set_fragmentation_enabled(
     phTmlNfc_i2cfragmentation_t result);
 
 extern NFCSTATUS phNxpNciHal_ext_send_sram_config_to_flash();
 extern NFCSTATUS phNxpNciHal_enableDefaultUICC2SWPline(uint8_t uicc2_sel);
 extern void phNxpNciHal_conf_nfc_forum_mode();
-extern void phNxpNciHal_prop_conf_lpcd();
+extern void phNxpNciHal_prop_conf_lpcd(bool enableLPCD);
 
 nfc_stack_callback_t* p_nfc_stack_cback_backup;
 phNxpNci_getCfg_info_t* mGetCfg_info = NULL;
-bool_t force_fw_download_req = false;
 bool_t gParserCreated = FALSE;
 /* global variable to get FW version from NCI response*/
 uint32_t wFwVerRsp;
@@ -105,7 +107,6 @@ extern uint16_t rom_version;
 extern uint8_t gRecFWDwnld;
 static uint8_t gRecFwRetryCount;  // variable to hold dummy FW recovery count
 static uint8_t write_unlocked_status = NFCSTATUS_SUCCESS;
-static uint8_t Rx_data[NCI_MAX_DATA_LEN];
 extern int phPalEse_spi_ioctl(phPalEse_ControlCode_t eControlCode,void *pDevHandle, long level);
 uint8_t wFwUpdateReq = false;
 uint8_t wRfUpdateReq = false;
@@ -126,6 +127,9 @@ phNxpNciClock_t phNxpNciClock = {0, {0}, false};
 phNxpNciRfSetting_t phNxpNciRfSet = {false, {0}};
 
 phNxpNciMwEepromArea_t phNxpNciMwEepromArea = {false, {0}};
+
+static bool_t gsIsFirstHalMinOpen = true;
+volatile bool_t gsIsFwRecoveryRequired = false;
 
 void *RfFwRegionDnld_handle = NULL;
 fpVerInfoStoreInEeprom_t fpVerInfoStoreInEeprom = NULL;
@@ -164,8 +168,14 @@ static void phNxpNciHal_initialize_mifare_flag();
 static NFCSTATUS phNxpNciHalRFConfigCmdRecSequence();
 static NFCSTATUS phNxpNciHal_CheckRFCmdRespStatus();
 static void phNxpNciHal_UpdateFwStatus(HalNfcFwUpdateStatus fwStatus);
-static NFCSTATUS phNxpNciHal_resetDefaultSettings();
-
+static NFCSTATUS phNxpNciHal_resetDefaultSettings(uint8_t fw_update_req, bool keep_config);
+static NFCSTATUS phNxpNciHal_force_fw_download(uint8_t seq_handler_offset = 0);
+static int phNxpNciHal_MinOpen_Clean (char *nfc_dev_node);
+static void phNxpNciHal_CheckAndHandleFwTearDown(void);
+static NFCSTATUS phNxpNciHal_getChipInfoInFwDnldMode(bool bIsVenResetReqd = false);
+static uint8_t phNxpNciHal_getSessionInfoInFwDnldMode();
+static NFCSTATUS phNxpNciHal_dlResetInFwDnldMode();
+static void phNxpNciHal_enableTmlRead();
 /******************************************************************************
  * Function         phNxpNciHal_initialize_debug_enabled_flag
  *
@@ -347,6 +357,108 @@ static void phNxpNciHal_kill_client_thread(
 
   return;
 }
+/******************************************************************************
+ * Function         phNxpNciHal_CheckIntegrityRecovery
+ *
+ * Description     This function to enter in recovery if FW download fails with
+ *                 check integrity.
+ *
+ * Returns         NFCSTATUS
+ *
+ ******************************************************************************/
+static NFCSTATUS phNxpNciHal_CheckIntegrityRecovery(bool bIsNfccDlState) {
+  NFCSTATUS status = NFCSTATUS_FAILED;
+  /* call read pending */
+  status = phTmlNfc_Read(
+      nxpncihal_ctrl.p_rsp_data, NCI_MAX_DATA_LEN,
+      (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
+  if (status != NFCSTATUS_PENDING) {
+    NXPLOG_NCIHAL_E("TML Read status error status B= %x", status);
+    status = NFCSTATUS_FW_CHECK_INTEGRITY_FAILED;
+  } else if (phNxpNciHal_nfcc_core_reset_init(false) == NFCSTATUS_SUCCESS) {
+    status = phNxpNciHal_fw_download(0, bIsNfccDlState);
+  }
+  return status;
+}
+/******************************************************************************
+ * Function         phNxpNciHal_force_fw_download
+ *
+ * Description     This function, based on the offset provided, will trigger
+ *                 Secure FW download sequence.
+ *                 It will retry the FW download in case the Check Integrity
+ *                 has been failed.
+ *
+ * Parameters      Offset by which the FW dnld Seq handler shall be triggered.
+ *                 e.g. if we want to send only the Check Integrity command,
+ *                 then the offset shall be 7.
+ *
+ * Returns         SUCCESS if FW download is successful else FAIL.
+ *
+ ******************************************************************************/
+static NFCSTATUS phNxpNciHal_force_fw_download(uint8_t seq_handler_offset) {
+  NFCSTATUS wConfigStatus = NFCSTATUS_SUCCESS;
+  NFCSTATUS status = NFCSTATUS_SUCCESS;
+  /*Get FW version from device*/
+  for (int retry = 1; retry >= 0; retry--) {
+    if (phDnldNfc_InitImgInfo() == NFCSTATUS_SUCCESS) { break;
+    } else {
+      phDnldNfc_ReSetHwDevHandle();
+      NXPLOG_NCIHAL_E("Image information extraction Failed!!");
+      if (!retry) return NFCSTATUS_FAILED;
+    }
+  }
+
+  NXPLOG_NCIHAL_D("FW version for FW file = 0x%x", wFwVer);
+  NXPLOG_NCIHAL_D("FW version from device = 0x%x", wFwVerRsp);
+  bool bIsNfccDlState = false;
+  if (wFwVerRsp == 0) {
+      status = phNxpNciHal_getChipInfoInFwDnldMode(true);
+      if (status != NFCSTATUS_SUCCESS) {
+        NXPLOG_NCIHAL_E("phNxpNciHal_getChipInfoInFwDnldMode Failed");
+      }
+      bIsNfccDlState = true;
+  }
+  if (NFCSTATUS_SUCCESS == phNxpNciHal_CheckValidFwVersion()) {
+    NXPLOG_NCIHAL_D("FW update required");
+    nxpncihal_ctrl.phNxpNciGpioInfo.state = GPIO_UNKNOWN;
+    if(nfcFL.chipType < sn100u)
+      phNxpNciHal_gpio_restore(GPIO_STORE);
+    fw_download_success = 0;
+    /*We are expecting NFC to be either in NFC or in the FW Download state*/
+    status = phNxpNciHal_fw_download(seq_handler_offset, bIsNfccDlState);
+    if (status == NFCSTATUS_FW_CHECK_INTEGRITY_FAILED) {
+      status = phNxpNciHal_CheckIntegrityRecovery(bIsNfccDlState);
+    }
+    property_set("nfc.fw.downloadmode_force", "0");
+    if (status == NFCSTATUS_SUCCESS) {
+      wConfigStatus = NFCSTATUS_SUCCESS;
+      fw_download_success = TRUE;
+    } else if (status == NFCSTATUS_FW_CHECK_INTEGRITY_FAILED ||
+            (phNxpNciHal_fw_mw_ver_check() != NFCSTATUS_SUCCESS)) {
+      phOsalNfc_Timer_Cleanup();
+      phTmlNfc_Shutdown_CleanUp();
+      return NFCSTATUS_CMD_ABORTED;
+    }
+    /* call read pending */
+    status = phTmlNfc_Read(
+        nxpncihal_ctrl.p_rsp_data, NCI_MAX_DATA_LEN,
+        (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
+    if (status != NFCSTATUS_PENDING) {
+      NXPLOG_NCIHAL_E("TML Read status error status B= %x", status);
+      wConfigStatus = NFCSTATUS_FAILED;
+    }
+
+    status = phNxpNciHal_nfcc_core_reset_init();
+    if(status == NFCSTATUS_SUCCESS && nfcFL.chipType < sn100u) {
+      if(status == NFCSTATUS_SUCCESS) {
+        phNxpNciHal_gpio_restore(GPIO_RESTORE);
+      } else {
+        NXPLOG_NCIHAL_E("Failed to restore GPIO values!!!\n");
+      }
+    }
+  }
+  return wConfigStatus;
+}
 
 /******************************************************************************
  * Function         phNxpNciHal_fw_download
@@ -360,23 +472,42 @@ static void phNxpNciHal_kill_client_thread(
  *                  NFCSTATUS_FAILED in case of failure
  *
  ******************************************************************************/
-NFCSTATUS phNxpNciHal_fw_download(void) {
-  NFCSTATUS status = NFCSTATUS_FAILED;
-  NFCSTATUS wConfigStatus = NFCSTATUS_FAILED;
-  phNxpNciHal_UpdateFwStatus(HalNfcFwUpdateStatus::HAL_NFC_FW_UPDATE_START);
-  /*phNxpNciHal_get_clk_freq();*/
+NFCSTATUS phNxpNciHal_fw_download(uint8_t seq_handler_offset, bool bIsNfccDlState) {
+  NFCSTATUS status = NFCSTATUS_SUCCESS;
+  phNxpNciHal_UpdateFwStatus(HAL_NFC_FW_UPDATE_START);
   phNxpNciHal_nfccClockCfgRead();
   status = phNxpNciHal_write_fw_dw_status(TRUE);
   if (status != NFCSTATUS_SUCCESS) {
     NXPLOG_NCIHAL_E("%s: NXP Set FW DW Flag failed", __FUNCTION__);
   }
-  status = phTmlNfc_IoCtl(phTmlNfc_e_EnableDownloadMode);
-  if (NFCSTATUS_SUCCESS != status) {
-    nxpncihal_ctrl.fwdnld_mode_reqd = FALSE;
-    phNxpNciHal_UpdateFwStatus(HalNfcFwUpdateStatus::HAL_NFC_FW_UPDATE_FAILED);
-    return NFCSTATUS_FAILED;
+
+  /*Getting UICC1 CL params */
+  uicc1HciParams.resize(0xFF);
+  status = phNxpNciHal_get_uicc_hci_params(
+      uicc1HciParams, uicc1HciParams.size(), EEPROM_UICC1_SESSION_ID);
+  if (status != NFCSTATUS_SUCCESS) {
+    NXPLOG_NCIHAL_E("%s: phNxpNciHal_get_uicc_hci_params for uicc1 is failed  ",
+                    __FUNCTION__);
   }
-  if (nfcFL.nfccFL._NFCC_DWNLD_MODE == NFCC_DWNLD_WITH_NCI_CMD) {
+  /*Getting UICC2 CL params */
+  uicc2HciParams.resize(0xFF);
+  status = phNxpNciHal_get_uicc_hci_params(
+      uicc2HciParams, uicc2HciParams.size(), EEPROM_UICC2_SESSION_ID);
+  if (status != NFCSTATUS_SUCCESS) {
+    NXPLOG_NCIHAL_E("%s: phNxpNciHal_get_uicc_hci_params for uicc2 is failed  ",
+                    __FUNCTION__);
+  }
+
+  if (!bIsNfccDlState) {
+    status = phTmlNfc_IoCtl(phTmlNfc_e_EnableDownloadMode);
+    if (NFCSTATUS_SUCCESS != status) {
+      nxpncihal_ctrl.fwdnld_mode_reqd = FALSE;
+      phNxpNciHal_UpdateFwStatus(HAL_NFC_FW_UPDATE_FAILED);
+      return NFCSTATUS_FAILED;
+    }
+  }
+
+  if (nfcFL.nfccFL._NFCC_DWNLD_MODE == NFCC_DWNLD_WITH_NCI_CMD && (!bIsNfccDlState)) {
     /*NCI_RESET_CMD*/
     static uint8_t cmd_reset_nci_dwnld[] = { 0x20, 0x00, 0x01, 0x80 };
     nxpncihal_ctrl.fwdnld_mode_reqd = TRUE;
@@ -386,16 +517,20 @@ NFCSTATUS phNxpNciHal_fw_download(void) {
       NXPLOG_NCIHAL_E("Core reset FW download command failed \n");
     }
   }
-  if (PLATFORM_IF_I3C == gpphTmlNfc_Context->platform_type) {
-    status = phTmlNfc_IoCtl(phTmlNfc_e_SetFwDownloadHdrSize);
-  }
+
   if (NFCSTATUS_SUCCESS == status) {
     phTmlNfc_EnableFwDnldMode(true);
     /* Set the obtained device handle to download module */
+
     phDnldNfc_SetHwDevHandle();
     NXPLOG_NCIHAL_D("Calling Seq handler for FW Download \n");
     status = phNxpNciHal_fw_download_seq(nxpprofile_ctrl.bClkSrcVal,
-                                         nxpprofile_ctrl.bClkFreqVal);
+                                         nxpprofile_ctrl.bClkFreqVal,
+                                         seq_handler_offset);
+
+    if (status == NFCSTATUS_FW_CHECK_INTEGRITY_FAILED) {
+      (void)phNxpNciHal_fw_dnld_switch_normal_mode(nullptr, status,nullptr);
+    }
     if(nfcFL.nfccFL._NFCC_DWNLD_MODE == NFCC_DWNLD_WITH_NCI_CMD)
     {
       nxpncihal_ctrl.hal_ext_enabled = TRUE;
@@ -406,15 +541,12 @@ NFCSTATUS phNxpNciHal_fw_download(void) {
 
     nxpncihal_ctrl.fwdnld_mode_reqd = FALSE;
     phTmlNfc_EnableFwDnldMode(false);
-    /* call read pending */
-    wConfigStatus = phTmlNfc_Read(
-        nxpncihal_ctrl.p_cmd_data, NCI_MAX_DATA_LEN,
-        (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
 
-    if (wConfigStatus != NFCSTATUS_PENDING) {
-      NXPLOG_NCIHAL_E("TML Read status error status B= %x", status);
-      status = NFCSTATUS_FAILED;
+    status = phNxpNciHal_dlResetInFwDnldMode();
+    if (status != NFCSTATUS_SUCCESS) {
+      NXPLOG_NCIHAL_E("DL Reset failed in FW DN mode");
     }
+
     nxpncihal_ctrl.hal_ext_enabled = FALSE;
     nxpncihal_ctrl.nci_info.wait_for_ntf = FALSE;
     /* FW download done.Therefore if previous I2C write failed then we can change the state to NFCSTATUS_SUCCESS*/
@@ -424,9 +556,9 @@ NFCSTATUS phNxpNciHal_fw_download(void) {
     status = NFCSTATUS_FAILED;
   }
   if (NFCSTATUS_SUCCESS == status) {
-    phNxpNciHal_UpdateFwStatus(HalNfcFwUpdateStatus::HAL_NFC_FW_UPDATE_SCUCCESS);
+    phNxpNciHal_UpdateFwStatus(HAL_NFC_FW_UPDATE_SCUCCESS);
   } else {
-    phNxpNciHal_UpdateFwStatus(HalNfcFwUpdateStatus::HAL_NFC_FW_UPDATE_FAILED);
+    phNxpNciHal_UpdateFwStatus(HAL_NFC_FW_UPDATE_FAILED);
   }
   return status;
 }
@@ -454,7 +586,11 @@ NFCSTATUS phNxpNciHal_CheckValidFwVersion(void) {
   ufw_current_major_no = ((0x00FF) & (wFwVer >> 8U));
   NXPLOG_NCIHAL_D("%s current_major_no = 0x%x", __func__, ufw_current_major_no);
 
-  if ((ufw_current_major_no == nfcFL._FW_MOBILE_MAJOR_NUMBER) ||
+  if (wFwVerRsp == 0) {
+    NXPLOG_NCIHAL_E(
+        "FW Version not received by NCI command >>> Force Firmware download");
+    status = NFCSTATUS_SUCCESS;
+  } else if ((ufw_current_major_no == nfcFL._FW_MOBILE_MAJOR_NUMBER) ||
       ((ufw_current_major_no == FW_MOBILE_MAJOR_NUMBER_PN81A) &&
         (nxpncihal_ctrl.nci_info.nci_version == NCI_VERSION_2_0)))
   {
@@ -475,13 +611,7 @@ NFCSTATUS phNxpNciHal_CheckValidFwVersion(void) {
     status = NFCSTATUS_SUCCESS;
   }
 #endif
-  else if (wFwVerRsp == 0) {
-    NXPLOG_NCIHAL_E(
-        "FW Version not received by NCI command >>> Force Firmware download");
-    tNFC_chipType chipType = sn100u;
-    CONFIGURE_FEATURELIST(chipType);
-    status = NFCSTATUS_SUCCESS;
-  } else {
+  else {
     NXPLOG_NCIHAL_E("Wrong FW Version >>> Firmware download not allowed");
   }
 
@@ -544,6 +674,32 @@ static void phNxpNciHal_get_clk_freq(void) {
 }
 
 /******************************************************************************
+ * Function         phNxpNciHal_MinOpen_Clean
+ *
+ * Description      This function shall be called from phNxpNciHal_MinOpen when
+ *                  any unrecoverable error has encountered which needs to mark
+ *                  min open as failed, HAL status as closed & deallocate any
+ *                  memory if allocated.
+ *
+ * Returns          This function always returns Failure
+ *
+ ******************************************************************************/
+static int phNxpNciHal_MinOpen_Clean (char *nfc_dev_node){
+  if (nfc_dev_node != NULL) {
+    free(nfc_dev_node);
+    nfc_dev_node = NULL;
+  }
+  if (mGetCfg_info != NULL) {
+    free(mGetCfg_info);
+    mGetCfg_info = NULL;
+  }
+  /* Report error status */
+  phNxpNciHal_cleanup_monitor();
+  nxpncihal_ctrl.halStatus = HAL_STATUS_CLOSE;
+  return NFCSTATUS_FAILED;
+}
+
+/******************************************************************************
  * Function         phNxpNciHal_MinOpen
  *
  * Description      This function initializes the least required resources to
@@ -564,19 +720,11 @@ int phNxpNciHal_MinOpen (){
   NFCSTATUS status = NFCSTATUS_SUCCESS;
   NXPLOG_NCIHAL_D("phNxpNci_MinOpen(): enter");
 
-  /*NCI_INIT_CMD*/
-  static uint8_t cmd_init_nci[] = {0x20, 0x01, 0x00};
-  /*NCI_RESET_CMD*/
-  static uint8_t cmd_reset_nci[] = {0x20, 0x00, 0x01, 0x00};
-  /*NCI2_0_INIT_CMD*/
-  static uint8_t cmd_init_nci2_0[] = {0x20, 0x01, 0x02, 0x00, 0x00};
-
   AutoThreadMutex a(sHalFnLock);
   if (nxpncihal_ctrl.halStatus == HAL_STATUS_MIN_OPEN) {
     NXPLOG_NCIHAL_D("phNxpNciHal_MinOpen(): already open");
     return NFCSTATUS_SUCCESS;
   }
-  setNxpRfConfigPath("/system/vendor/libnfc-nxp_RF.conf");
 #if (defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64))
   setNxpFwConfigPath("/system/vendor/lib64/libsn100u_fw.so");
 #else
@@ -584,7 +732,6 @@ int phNxpNciHal_MinOpen (){
 #endif
   phNxpNciHal_initializeRegRfFwDnld();
 
-  int init_retry_cnt = 0;
   int8_t ret_val = 0x00;
 
   phNxpNciHal_initialize_debug_enabled_flag();
@@ -610,7 +757,8 @@ int phNxpNciHal_MinOpen (){
   /*Init binary semaphore for Spi Nfc synchronization*/
   if (0 != sem_init(&nxpncihal_ctrl.syncSpiNfc, 0, 1)) {
     NXPLOG_NCIHAL_E("sem_init() FAiled, errno = 0x%02X", errno);
-    goto clean_and_return;
+    CONCURRENCY_UNLOCK();
+    return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
   }
 
   /* By default HAL status is HAL_STATUS_OPEN */
@@ -622,13 +770,14 @@ int phNxpNciHal_MinOpen (){
   nfc_dev_node = (char*)malloc(max_len * sizeof(char));
   if (nfc_dev_node == NULL) {
     NXPLOG_NCIHAL_D("malloc of nfc_dev_node failed ");
-    goto clean_and_return;
+    CONCURRENCY_UNLOCK();
+    return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
   } else if (!GetNxpStrValue(NAME_NXP_NFC_DEV_NODE, nfc_dev_node,
                              max_len)) {
     NXPLOG_NCIHAL_D(
         "Invalid nfc device node name keeping the default device node "
         "/dev/nq-nci");
-    strlcpy((char*)nfc_dev_node, "/dev/nq-nci", max_len);
+    strlcpy((char*)nfc_dev_node, "/dev/nq-nci", (max_len * sizeof(char)));
   }
   /* Configure hardware link */
   nxpncihal_ctrl.gDrvCfg.nClientId = phDal4Nfc_msgget(0, 0600);
@@ -640,7 +789,8 @@ int phNxpNciHal_MinOpen (){
   mGetCfg_info = NULL;
   mGetCfg_info = (phNxpNci_getCfg_info_t*)nxp_malloc(sizeof(phNxpNci_getCfg_info_t));
   if (mGetCfg_info == NULL) {
-    goto clean_and_return;
+    CONCURRENCY_UNLOCK();
+    return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
   }
   memset(mGetCfg_info, 0x00, sizeof(phNxpNci_getCfg_info_t));
 
@@ -648,7 +798,8 @@ int phNxpNciHal_MinOpen (){
   wConfigStatus = phTmlNfc_Init(&tTmlConfig);
   if (wConfigStatus != NFCSTATUS_SUCCESS) {
     NXPLOG_NCIHAL_E("phTmlNfc_Init Failed");
-    goto clean_and_return;
+    CONCURRENCY_UNLOCK();
+    return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
   } else {
     if (nfc_dev_node != NULL) {
       free(nfc_dev_node);
@@ -662,201 +813,113 @@ int phNxpNciHal_MinOpen (){
   if (ret_val != 0) {
     NXPLOG_NCIHAL_E("pthread_create failed");
     wConfigStatus = phTmlNfc_Shutdown_CleanUp();
-    goto clean_and_return;
+    CONCURRENCY_UNLOCK();
+    return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
   }
 
   CONCURRENCY_UNLOCK();
-
+  const char context[] = "MinOpen";
   /* call read pending */
   status = phTmlNfc_Read(
-      nxpncihal_ctrl.p_cmd_data, NCI_MAX_DATA_LEN,
-      (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
+      nxpncihal_ctrl.p_rsp_data, NCI_MAX_DATA_LEN,
+      (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, (void *)context);
   if (status != NFCSTATUS_PENDING) {
     NXPLOG_NCIHAL_E("TML Read status error status = %x", status);
     wConfigStatus = phTmlNfc_Shutdown_CleanUp();
     wConfigStatus = NFCSTATUS_FAILED;
-    goto clean_and_return;
+    return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
+  }
+  /* Timed wait for IRQ to be Low before issuing write */
+  phTmlNfc_WaitForIRQLow();
+
+  if (PLATFORM_IF_I2C == gpphTmlNfc_Context->platform_type) {
+    if (gsIsFirstHalMinOpen)
+      phNxpNciHal_CheckAndHandleFwTearDown();
+  }
+  else {
+    gpphTmlNfc_Context->nfc_state = gpTransportObj->GetNfcState(gpphTmlNfc_Context->pDevHandle);
+
+    switch(gpphTmlNfc_Context->nfc_state) {
+      case NFC_STATE_FW_DWL:
+        NXPLOG_NCIHAL_D("NFCC is initilly booted in FW DWL state");
+        phNxpNciHal_CheckAndHandleFwTearDown();
+        break;
+      case NFC_STATE_NCI:
+        NXPLOG_NCIHAL_D("NFCC is initilly booted in NCI mode");
+        break;
+      default:
+        NXPLOG_NCIHAL_D("NFCC is Unlikely in unknown state, check FW download state");
+        phNxpNciHal_CheckAndHandleFwTearDown();
+    };
   }
 
-init_retry:
-
-  uint8_t fw_update_req;
+  uint8_t seq_handler_offset = 0x00;
+  uint8_t fw_update_req = 1;
   uint8_t rf_update_req;
   phNxpNciHal_ext_init();
 
-  status = phNxpNciHal_send_ext_cmd(sizeof(cmd_reset_nci), cmd_reset_nci);
-  if ((status != NFCSTATUS_SUCCESS) &&
-      (nxpncihal_ctrl.retry_cnt >= MAX_RETRY_COUNT)) {
-    NXPLOG_NCIHAL_E("Force FW Download, NFCC not coming out from Standby");
-    wConfigStatus = NFCSTATUS_FAILED;
-    goto force_download;
-  } else if (status != NFCSTATUS_SUCCESS) {
-    NXPLOG_NCIHAL_E("NCI_CORE_RESET: Failed");
-    if (init_retry_cnt < 3) {
-      init_retry_cnt++;
-      goto init_retry;
-    } else if(init_retry_cnt < MAX_RETRY_COUNT) {
-      NXPLOG_NCIHAL_E("invlaid core reset rsp received. Trying Force FW download");
-      if (PLATFORM_IF_I2C == gpphTmlNfc_Context->platform_type) {
-        (void)phNxpNciHal_power_cycle();
-      }
-      goto force_download;
-    } else
-      init_retry_cnt = 0;
-    wConfigStatus = phTmlNfc_Shutdown_CleanUp();
-    wConfigStatus = NFCSTATUS_FAILED;
-    goto clean_and_return;
-  }
+  if (NFCSTATUS_SUCCESS == phNxpNciHal_nfcc_core_reset_init(true)) {
+    setNxpFwConfigPath(nfcFL._FW_LIB_PATH.c_str());
+    if(nfcFL.chipType < sn100u)
+      phNxpNciHal_enable_i2c_fragmentation();
 
-  if(nxpncihal_ctrl.nci_info.nci_version == NCI_VERSION_2_0) {
-    status = phNxpNciHal_send_ext_cmd(sizeof(cmd_init_nci2_0), cmd_init_nci2_0);
-  } else {
-    status = phNxpNciHal_send_ext_cmd(sizeof(cmd_init_nci), cmd_init_nci);
-    if(status == NFCSTATUS_SUCCESS && (nfcFL.chipType == pn557)) {
-      NXPLOG_NCIHAL_D("Chip is in NCI1.0 mode reset the chip to 2.0 mode");
-      status = phNxpNciHal_send_ext_cmd(sizeof(cmd_reset_nci), cmd_reset_nci);
-      if(status == NFCSTATUS_SUCCESS) {
-        status = phNxpNciHal_send_ext_cmd(sizeof(cmd_init_nci2_0), cmd_init_nci2_0);
-        if(status == NFCSTATUS_SUCCESS) {
-          goto init_retry;
-        }
-      }
+    status = phNxpNciHal_CheckFwRegFlashRequired(&fw_update_req, &rf_update_req, false);
+    if (status != NFCSTATUS_OK) {
+      NXPLOG_NCIHAL_D("phNxpNciHal_CheckFwRegFlashRequired() failed:exit status = %x", status);
+      fw_update_req = FALSE;
+      rf_update_req = FALSE;
     }
-  }
-  if ((status != NFCSTATUS_SUCCESS) &&
-      (nxpncihal_ctrl.retry_cnt >= MAX_RETRY_COUNT)) {
-    NXPLOG_NCIHAL_E("Force FW Download, NFCC not coming out from Standby");
-    wConfigStatus = NFCSTATUS_FAILED;
-    goto force_download;
-  } else if (status != NFCSTATUS_SUCCESS) {
-    NXPLOG_NCIHAL_E("NCI_CORE_INIT: Failed");
-    if (init_retry_cnt < 3) {
-      init_retry_cnt++;
-      goto init_retry;
-    } else if (init_retry_cnt < MAX_RETRY_COUNT) {
-      NXPLOG_NCIHAL_E("invlaid core init rsp received. Trying Force FW download");
-      if (PLATFORM_IF_I2C == gpphTmlNfc_Context->platform_type) {
-        (void)phNxpNciHal_power_cycle();
+
+    if (!wFwUpdateReq) {
+      uint8_t is_teared_down = 0x00;
+      status = phNxpNciHal_read_fw_dw_status(is_teared_down);
+      if (status != NFCSTATUS_SUCCESS) {
+        NXPLOG_NCIHAL_E("%s: NXP get FW DW Flag failed", __FUNCTION__);
       }
-      goto force_download;
-    } else
-      init_retry_cnt = 0;
-    wConfigStatus = phTmlNfc_Shutdown_CleanUp();
-    wConfigStatus = NFCSTATUS_FAILED;
-    goto clean_and_return;
-  }
-  if(nfcFL.chipType != sn100u)
-    phNxpNciHal_enable_i2c_fragmentation();
-
-  status = phNxpNciHal_CheckFwRegFlashRequired(&fw_update_req, &rf_update_req, false);
-  if (status != NFCSTATUS_OK) {
-    NXPLOG_NCIHAL_D("phNxpNciHal_CheckFwRegFlashRequired() failed : exit - status = %x ", status);
-  }
-  wFwUpdateReq = fw_update_req;
-
-  if (!wFwUpdateReq) {
-    NXPLOG_NCIHAL_D("FW update not required");
-    property_set("nfc.fw.downloadmode_force", "0");
-    phDnldNfc_ReSetHwDevHandle();
-  } else {
-  force_download:
-    /*Get FW version from device*/
-    status = phDnldNfc_InitImgInfo();
-    if (status != NFCSTATUS_SUCCESS) {
-      NXPLOG_NCIHAL_E("Image information extraction Failed!!");
-    }
-    NXPLOG_NCIHAL_D("FW version for FW file = 0x%x", wFwVer);
-    NXPLOG_NCIHAL_D("FW version from device = 0x%x", wFwVerRsp);
-    if (wFwVerRsp == 0) {
-      nfcFL.chipType = sn100u;
-      tNFC_chipType chipType = sn100u;
-      CONFIGURE_FEATURELIST(chipType);
-      nfcFL.nfccFL._NFCC_DWNLD_MODE = NFCC_DWNLD_WITH_VEN_RESET;
-      phDnldNfc_InitImgInfo();
-    }
-    if (NFCSTATUS_SUCCESS == phNxpNciHal_CheckValidFwVersion()) {
-      NXPLOG_NCIHAL_D("FW update required");
-      nxpncihal_ctrl.phNxpNciGpioInfo.state = GPIO_UNKNOWN;
-      if(nfcFL.chipType != sn100u)
-        phNxpNciHal_gpio_restore(GPIO_STORE);
-      fw_download_success = 0;
-      int ese_gpio_value = 0;
-
-      NXPLOG_NCIHAL_D("eSE Power GPIO value = %d", ese_gpio_value);
-      if(ese_gpio_value == 0) {
-        status = phNxpNciHal_fw_download();
-        property_set("nfc.fw.downloadmode_force", "0");
-        if (status != NFCSTATUS_SUCCESS) {
-
-          if (NFCSTATUS_SUCCESS != phNxpNciHal_fw_mw_ver_check()) {
-            NXPLOG_NCIHAL_D("Chip Version Middleware Version mismatch!!!!");
-            phOsalNfc_Timer_Cleanup();
-            phTmlNfc_Shutdown_CleanUp();
-            wConfigStatus = NFCSTATUS_FAILED;
-            goto clean_and_return;
-          }
-          NXPLOG_NCIHAL_E("FW download failed, Continue NFC init");
-          status =
-              phNxpNciHal_send_ext_cmd(sizeof(cmd_reset_nci), cmd_reset_nci);
-          if (status != NFCSTATUS_SUCCESS)
-            NXPLOG_NCIHAL_E("Core reset failed");
-        } else {
-          wConfigStatus = NFCSTATUS_SUCCESS;
-          fw_download_success = 1;
-        }
-#if(NXP_EXTNS != TRUE)
-          /* call read pending */
-        status = phTmlNfc_Read(
-          nxpncihal_ctrl.p_cmd_data, NCI_MAX_DATA_LEN,
-          (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
-        if (status != NFCSTATUS_PENDING) {
-          NXPLOG_NCIHAL_E("TML Read status error status = %x", status);
-          wConfigStatus = phTmlNfc_Shutdown_CleanUp();
-          wConfigStatus = NFCSTATUS_FAILED;
-          goto clean_and_return;
-        } else {
-          if (wFwVerRsp == 0) phDnldNfc_ReSetHwDevHandle();
-        }
-#else
-        if (wFwVerRsp == 0) phDnldNfc_ReSetHwDevHandle();
-#endif
-        if(nfcFL.chipType != sn100u) {
-          status = phNxpNciHal_nfcc_core_reset_init();
-          if(status == NFCSTATUS_SUCCESS) {
-            phNxpNciHal_gpio_restore(GPIO_RESTORE);
-          } else {
-          NXPLOG_NCIHAL_E("Failed to restore GPIO values!!!\n");
-          }
-        }
+      if (is_teared_down) {
+        seq_handler_offset = PHLIBNFC_DNLD_CHECKINTEGRITY_OFFSET;
+        fw_update_req = TRUE;
       } else {
-        NXPLOG_NCIHAL_E("FW download denied while SPI in use, Continue NFC init");
+        NXPLOG_NCIHAL_D("FW update not required");
+        property_set("nfc.fw.downloadmode_force", "0");
+        phDnldNfc_ReSetHwDevHandle();
       }
     }
   }
-  status = phNxpNciHal_resetDefaultSettings();
-  if(status != NFCSTATUS_SUCCESS) {
-    NXPLOG_NCIHAL_E("Applying default settings failed, Perform Force FW Download");
-    goto force_download;
+
+  if (gsIsFirstHalMinOpen && gsIsFwRecoveryRequired) {
+    NXPLOG_NCIHAL_E("FW Recovery is required");
+    fw_update_req = true;
   }
+
+  do {
+    if (fw_update_req) {
+      gsIsFwRecoveryRequired = false;
+      status = phNxpNciHal_force_fw_download(seq_handler_offset);
+      if (status == NFCSTATUS_CMD_ABORTED ) {
+        return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
+      } else if (fw_download_success) {
+        wConfigStatus = NFCSTATUS_SUCCESS;
+      }
+    }
+    status = phNxpNciHal_resetDefaultSettings(fw_update_req,
+            fw_download_success?false:true);
+
+    if ((status != NFCSTATUS_SUCCESS && fw_download_success) ||
+        (gsIsFwRecoveryRequired && fw_update_req)) {
+      NXPLOG_NCIHAL_E("FW Recovery required, Perform Force FW Download "
+                      "gsIsFwRecoveryRequired %d",
+                      gsIsFwRecoveryRequired);
+      fw_update_req = 1;
+    } else {
+      break;
+    }
+  } while (status != NFCSTATUS_SUCCESS || gsIsFwRecoveryRequired);
   /* Call open complete */
   phNxpNciHal_MinOpen_complete(wConfigStatus);
   NXPLOG_NCIHAL_D("phNxpNciHal_MinOpen(): exit");
   return wConfigStatus;
 
-clean_and_return:
-  CONCURRENCY_UNLOCK();
-  if (nfc_dev_node != NULL) {
-    free(nfc_dev_node);
-    nfc_dev_node = NULL;
-  }
-  if (mGetCfg_info != NULL) {
-    free(mGetCfg_info);
-    mGetCfg_info = NULL;
-  }
-  /* Report error status */
-  phNxpNciHal_cleanup_monitor();
-  nxpncihal_ctrl.halStatus = HAL_STATUS_CLOSE;
-  return NFCSTATUS_FAILED;
 }
 
 
@@ -878,7 +941,6 @@ int phNxpNciHal_open(nfc_stack_callback_t* p_cback,
                      nfc_stack_data_callback_t* p_data_cback) {
   NFCSTATUS wConfigStatus = NFCSTATUS_SUCCESS;
   NFCSTATUS status = NFCSTATUS_SUCCESS;
-
   NXPLOG_NCIHAL_E("phNxpNciHal_open NFC HAL OPEN");
 #ifdef ENABLE_ESE_CLIENT
   if(ese_update != ESE_UPDATE_COMPLETED)
@@ -950,8 +1012,14 @@ int phNxpNciHal_fw_mw_ver_check() {
             (rom_version == 0x10) && (fw_maj_ver == 0x05)) {
         status = NFCSTATUS_SUCCESS;
     } else if ((nfcFL.chipType == sn100u) &&
-            (rom_version == 0x01) && (fw_maj_ver == 0x10)) {
+            (rom_version == SN1XX_ROM_VERSION) && (fw_maj_ver == SN1XX_FW_MAJOR_VERSION)) {
         status = NFCSTATUS_SUCCESS;
+    } else if ((nfcFL.chipType == sn220u) &&
+            (rom_version == SN2XX_ROM_VERSION) && (fw_maj_ver == SN2XX_FW_MAJOR_VERSION)) {
+        status = NFCSTATUS_SUCCESS;
+    }
+    if (NFCSTATUS_SUCCESS != status) {
+      NXPLOG_NCIHAL_D("Chip Version Middleware Version mismatch!!!!");
     }
   return status;
 }
@@ -965,7 +1033,7 @@ int phNxpNciHal_fw_mw_ver_check() {
  *
  ******************************************************************************/
 static void phNxpNciHal_MinOpen_complete(NFCSTATUS status) {
-
+  gsIsFirstHalMinOpen = false;
   if (status == NFCSTATUS_SUCCESS) {
     nxpncihal_ctrl.halStatus = HAL_STATUS_MIN_OPEN;
   }
@@ -1075,7 +1143,7 @@ int phNxpNciHal_write_internal(uint16_t data_len, const uint8_t* p_data) {
                                         nxpncihal_ctrl.p_cmd_data, ORIG_LIBNFC);
   CONCURRENCY_UNLOCK();
 
-  if (nfcFL.chipType != sn100u && icode_send_eof == 1) {
+  if (nfcFL.chipType < sn100u && icode_send_eof == 1) {
     usleep(10000);
     icode_send_eof = 2;
     status = phNxpNciHal_send_ext_cmd(3, cmd_icode_eof);
@@ -1270,6 +1338,9 @@ static void phNxpNciHal_read_complete(void* pContext,
         nxpncihal_ctrl.rx_data_len = pInfo->wLength;
         status = phNxpNciHal_process_ext_rsp(nxpncihal_ctrl.p_rx_data,
                                           &nxpncihal_ctrl.rx_data_len);
+        if (nxpncihal_ctrl.hal_ext_enabled && phTmlNfc_IsFwDnldModeEnabled()) {
+          SEM_POST(&(nxpncihal_ctrl.ext_cb_data));
+        }
     }
     phNxpNciHal_print_res_status(pInfo->pBuff,
                                     &pInfo->wLength);
@@ -1283,7 +1354,7 @@ static void phNxpNciHal_read_complete(void* pContext,
       }
       /* Unlock semaphore only for responses*/
       if ((nxpncihal_ctrl.p_rx_data[0x00] & NCI_MT_MASK) == NCI_MT_RSP ||
-          ((nfcFL.chipType != sn100u) && (icode_detected == true) && (icode_send_eof == 3))) {
+          ((nfcFL.chipType < sn100u) && (icode_detected == true) && (icode_send_eof == 3))) {
         /* Unlock semaphore */
         SEM_POST(&(nxpncihal_ctrl.ext_cb_data));
       }
@@ -1342,9 +1413,9 @@ static void phNxpNciHal_read_complete(void* pContext,
   if (nxpncihal_ctrl.halStatus == HAL_STATUS_CLOSE &&
 #if (NXP_EXTNS == TRUE)
   (nxpncihal_ctrl.p_cmd_data[0x00] & NCI_GID_MASK) ==
-		  (nxpncihal_ctrl.p_rx_data[0x00] & NCI_GID_MASK) &&
+          (nxpncihal_ctrl.p_rx_data[0x00] & NCI_GID_MASK) &&
   (nxpncihal_ctrl.p_cmd_data[0x01] & NCI_OID_MASK) ==
-		  (nxpncihal_ctrl.p_rx_data[0x01] & NCI_OID_MASK) &&
+          (nxpncihal_ctrl.p_rx_data[0x01] & NCI_OID_MASK) &&
 #endif
   nxpncihal_ctrl.nci_info.wait_for_ntf == FALSE) {
     NXPLOG_NCIHAL_D(" Ignoring read , HAL close triggered");
@@ -1353,7 +1424,7 @@ static void phNxpNciHal_read_complete(void* pContext,
   /* Read again because read must be pending always except FWDNLD.*/
   if(TRUE != nxpncihal_ctrl.fwdnld_mode_reqd){
     status = phTmlNfc_Read(
-        Rx_data, NCI_MAX_DATA_LEN,
+        nxpncihal_ctrl.p_rsp_data, NCI_MAX_DATA_LEN,
         (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
     if (status != NFCSTATUS_PENDING) {
       NXPLOG_NCIHAL_E("read status error status = %x", status);
@@ -1379,6 +1450,25 @@ uint8_t phNxpNciHal_lastResetNtfReason(void) {
   nxpncihal_ctrl.nci_info.lastResetNtfReason = 0;
 
   return reasonCode;
+}
+/******************************************************************************
+ * Function         phNxpNciHal_enableTmlRead
+ *
+ * Description      Invokes TmlNfc Read to make sure always read thread is
+ *                  pending
+ *
+ * Returns          None
+ *
+ ******************************************************************************/
+void phNxpNciHal_enableTmlRead() {
+  /* Read again because read must be pending always.*/
+  NFCSTATUS status = phTmlNfc_Read(
+      nxpncihal_ctrl.p_rsp_data, NCI_MAX_DATA_LEN,
+      (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
+  if (status != NFCSTATUS_PENDING) {
+    NXPLOG_NCIHAL_E("read status error status = %x", status);
+    /* TODO: Not sure how to handle this ? */
+  }
 }
 /******************************************************************************
  * Function         phNxpNciHal_core_initialized
@@ -1410,13 +1500,13 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
       0x20, 0x02, 0x05, 0x01, 0xA0, 0x91, 0x01, 0x01};
   static uint8_t swp_switch_timeout_cmd[] = {0x20, 0x02, 0x06, 0x01, 0xA0,
                                              0xF3, 0x02, 0x00, 0x00};
-  static uint8_t cmd_get_cfg_dbg_info[] = {0x20, 0x03, 0x4, 0xA0, 0x1B, 0xA0, 0x27};
+  uint8_t cmd_get_cfg_dbg_info[] = {0x20, 0x03, 0x0B, 0x05, 0xA0, 0x39, 0xA0,
+          0x1A, 0xA0, 0x1B, 0xA0, 0x1C, 0xA0, 0x27};
 
   config_success = true;
   long bufflen = 260;
   long retlen = 0;
   phNxpNci_EEPROM_info_t mEEPROM_info = {.request_mode = 0};
-  uint8_t flash_update_done = FALSE;
 #if (NFC_NXP_HFO_SETTINGS == TRUE)
   /* Temp fix to re-apply the proper clock setting */
   int temp_fix = 1;
@@ -1452,7 +1542,7 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
     if (retry_core_init_cnt > 3) {
         return NFCSTATUS_FAILED;
     }
-    if(nfcFL.chipType != sn100u) {
+    if(nfcFL.chipType < sn100u) {
       status = phTmlNfc_IoCtl(phTmlNfc_e_ResetDevice);
       if (NFCSTATUS_SUCCESS == status) {
         NXPLOG_NCIHAL_D("PN54X Reset - SUCCESS\n");
@@ -1504,6 +1594,28 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
       goto retry_core_init;
     }
   }
+  status = phNxpNciHal_send_ext_cmd(sizeof(cmd_get_cfg_dbg_info), cmd_get_cfg_dbg_info);
+  if (status != NFCSTATUS_SUCCESS) {
+    NXPLOG_NCIHAL_E("Failed to retrieve NFCC debug info");
+  }
+  num = 0;
+  if (GetNxpNumValue("NXP_I3C_MODE", &num, sizeof(num))) {
+    if (num == 1) {
+      uint8_t coreStandBy[] = {0x2F, 0x00, 0x01, 0x00};
+      NXPLOG_NCIHAL_E("Disable NFCC standby");
+      status = phNxpNciHal_send_ext_cmd(sizeof(coreStandBy), coreStandBy);
+      if (status != NFCSTATUS_SUCCESS) {
+        NXPLOG_NCIHAL_E("Failed to set NFCC Standby Disabled");
+      }
+    }
+  }
+
+  status = phNxpNciHal_setAutonomousMode();
+  if (status != NFCSTATUS_SUCCESS) {
+    NXPLOG_NCIHAL_E("Set Autonomous enable: Failed");
+    retry_core_init_cnt++;
+    goto retry_core_init;
+  }
 
   mEEPROM_info.buffer = &enable_ven_cfg;
   mEEPROM_info.bufflen = sizeof(enable_ven_cfg);
@@ -1526,38 +1638,22 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
   if (fw_dwnld_flag == true) {
     phNxpNciHal_hci_network_reset();
   }
-  if(nfcFL.chipType == sn100u) {
-    if(fw_dwnld_flag) {
-      mEEPROM_info.buffer = &flash_update_done;
-      mEEPROM_info.bufflen = sizeof(flash_update_done);
-      mEEPROM_info.request_type = EEPROM_FLASH_UPDATE;
-      mEEPROM_info.request_mode = SET_EEPROM_DATA;
-      request_EEPROM(&mEEPROM_info);
-    } else {
-      mEEPROM_info.buffer = &flash_update_done;
-      mEEPROM_info.bufflen = sizeof(flash_update_done);
-      mEEPROM_info.request_type = EEPROM_FLASH_UPDATE;
-      mEEPROM_info.request_mode = GET_EEPROM_DATA;
-      request_EEPROM(&mEEPROM_info);
-      if(flash_update_done == FALSE)
-        fw_dwnld_flag = TRUE;
+  if (nfcFL.chipType < sn100u) {
+    // Check if firmware download success
+    status = phNxpNciHal_get_mw_eeprom();
+    if (status != NFCSTATUS_SUCCESS) {
+      NXPLOG_NCIHAL_E("NXP GET MW EEPROM AREA Proprietary Ext failed");
+      retry_core_init_cnt++;
+      goto retry_core_init;
     }
-  } else {
-  // Check if firmware download success
-  status = phNxpNciHal_get_mw_eeprom();
-  if (status != NFCSTATUS_SUCCESS) {
-    NXPLOG_NCIHAL_E("NXP GET MW EEPROM AREA Proprietary Ext failed");
-    retry_core_init_cnt++;
-    goto retry_core_init;
-  }
 
-  //
-  status = phNxpNciHal_check_clock_config();
-  if (status != NFCSTATUS_SUCCESS) {
-    NXPLOG_NCIHAL_E("phNxpNciHal_check_clock_config failed");
-    retry_core_init_cnt++;
-    goto retry_core_init;
-  }
+    //
+    status = phNxpNciHal_check_clock_config();
+    if (status != NFCSTATUS_SUCCESS) {
+      NXPLOG_NCIHAL_E("phNxpNciHal_check_clock_config failed");
+      retry_core_init_cnt++;
+      goto retry_core_init;
+    }
 
 #ifdef PN547C2_CLOCK_SETTING
   if (isNxpRFConfigModified() || (fw_dwnld_flag == true) ||
@@ -1604,20 +1700,7 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
 #endif
   }
 
-
-  retlen = 0;
   config_access = true;
-  isfound = GetNxpByteArrayValue(NAME_NXP_NFC_PROFILE_EXTN, (char*)buffer,
-                                 bufflen, &retlen);
-  if (isfound > 0 && retlen > 0) {
-    /* NXP ACT Proprietary Ext */
-    status = phNxpNciHal_send_ext_cmd(retlen, buffer);
-    if (status != NFCSTATUS_SUCCESS) {
-      NXPLOG_NCIHAL_E("NXP ACT Proprietary Ext failed");
-      retry_core_init_cnt++;
-      goto retry_core_init;
-    }
-  }
   setConfigAlways = false;
   isfound = GetNxpNumValue(NAME_NXP_SET_CONFIG_ALWAYS, &num, sizeof(num));
   if (isfound > 0) {
@@ -1635,10 +1718,10 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
     mEEPROM_info.request_mode = GET_EEPROM_DATA;
     retlen = 0;
     memset(buffer, 0x00, bufflen);
-    GetNxpByteArrayValue(NAME_NXP_AUTH_TIMEOUT_CFG, (char *)buffer, bufflen,
+    isfound = GetNxpByteArrayValue(NAME_NXP_AUTH_TIMEOUT_CFG, (char *)buffer, bufflen,
                          &retlen);
 
-    if (retlen == NXP_AUTH_TIMEOUT_BUF_LEN) {
+    if ((isfound > 0) && (retlen == NXP_AUTH_TIMEOUT_BUF_LEN)) {
       memcpy(&auth_timeout_buffer, buffer, NXP_AUTH_TIMEOUT_BUF_LEN);
       mEEPROM_info.request_mode = SET_EEPROM_DATA;
 
@@ -1692,15 +1775,6 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
         NXPLOG_NCIHAL_E("Wrong Configuration Value %ld", num);
       }
     }
-  if(phNxpNciHal_lastResetNtfReason() == FW_DBG_REASON_AVAILABLE){
-
-    status = phNxpNciHal_send_ext_cmd(sizeof(cmd_get_cfg_dbg_info), cmd_get_cfg_dbg_info);
-    if (status != NFCSTATUS_SUCCESS) {
-      NXPLOG_NCIHAL_E("NFCC texted reset ntf failed");
-    }
-    NXPLOG_NCIHAL_D("NFCC txed reset ntf with reason code 0xA3");
-  }
-
   }
   if ((true == fw_dwnld_flag) || (true == setConfigAlways) ||
       isNxpConfigModified()) {
@@ -1717,19 +1791,23 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
       if(retlen > 0)
         phNxpNciHal_enableDefaultUICC2SWPline((uint8_t)retlen);
     }
-
-    status = phNxpNciHal_setGuardTimer();
-    if (status != NFCSTATUS_SUCCESS) {
-      NXPLOG_NCIHAL_E("phNxpNciHal_setGuardTimer failed");
-      retry_core_init_cnt++;
-      goto retry_core_init;
-    } else {
-      status = phNxpNciHal_setAutonomousMode();
+    if (nfcFL.chipType != pn557) {
+      status = phNxpNciHal_setGuardTimer();
       if (status != NFCSTATUS_SUCCESS) {
-        NXPLOG_NCIHAL_E("Set Autonomous enable: Failed");
+        NXPLOG_NCIHAL_E("phNxpNciHal_setGuardTimer failed");
+        retry_core_init_cnt++;
+        goto retry_core_init;
       }
     }
-
+#if(NXP_EXTNS == TRUE && NXP_SRD == TRUE)
+    status = phNxpNciHal_setSrdtimeout();
+    if (status != NFCSTATUS_SUCCESS &&
+        status != NFCSTATUS_FEATURE_NOT_SUPPORTED) {
+      NXPLOG_NCIHAL_E("phNxpNciHal_setSrdtimeout failed");
+      retry_core_init_cnt++;
+      goto retry_core_init;
+    }
+#endif
     config_access = true;
     retlen = 0;
     NXPLOG_NCIHAL_D("Performing ndef nfcee config settings");
@@ -1747,6 +1825,9 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
     mEEPROM_info.request_type = EEPROM_T4T_NFCEE_ENABLE;
     mEEPROM_info.request_mode = SET_EEPROM_DATA;
     request_EEPROM(&mEEPROM_info);
+    if (phNxpNciHal_configure_merge_sak() != NFCSTATUS_SUCCESS) {
+      NXPLOG_NCIHAL_E("Applying iso_dep sak merge settings failed");
+    }
   }
   if ((true == fw_dwnld_flag) || (true == setConfigAlways) ||
      isNxpConfigModified() || (wRfUpdateReq == true)) {
@@ -1826,13 +1907,7 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
           goto retry_core_init;
         }
     }
-    flash_update_done = TRUE;
-    mEEPROM_info.buffer = &flash_update_done;
-    mEEPROM_info.bufflen = sizeof(flash_update_done);
-    mEEPROM_info.request_type = EEPROM_FLASH_UPDATE;
-    mEEPROM_info.request_mode = SET_EEPROM_DATA;
-    request_EEPROM(&mEEPROM_info);
-    retlen = 0;
+
     config_access = true;
 
     retlen = 0;
@@ -1868,7 +1943,7 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
       // Check the permissible range [0 - 60]
       if (0 <= retlen && retlen <= 60) {
         if (0 < retlen) {
-          unsigned int timeout = retlen * 1000;
+          unsigned int timeout = (uint32_t)retlen * 1000;
           unsigned int timeoutHx = 0x0000;
 
           char tmpbuffer[10] = {0};
@@ -1894,9 +1969,10 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
     status = phNxpNciHal_china_tianjin_rf_setting();
     if (status != NFCSTATUS_SUCCESS) {
       NXPLOG_NCIHAL_E("phNxpNciHal_china_tianjin_rf_setting failed");
-      return NFCSTATUS_FAILED;
+      retry_core_init_cnt++;
+      goto retry_core_init;
     }
-    if(nfcFL.chipType != sn100u) {
+    if(nfcFL.chipType < sn100u) {
       // Update eeprom value
       status = phNxpNciHal_set_mw_eeprom();
       if (status != NFCSTATUS_SUCCESS) {
@@ -1990,7 +2066,7 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
   {
     if (isNxpRFConfigModified() || isNxpConfigModified() || fw_dwnld_flag ||
         setConfigAlways) {
-      if (nfcFL.chipType == sn100u) {
+      if (nfcFL.chipType >= sn100u) {
         status = phNxpNciHal_ext_send_sram_config_to_flash();
         if (status != NFCSTATUS_SUCCESS) {
           NXPLOG_NCIHAL_E("Updation of the SRAM contents failed");
@@ -2007,6 +2083,29 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
       }
     }
     if (status == NFCSTATUS_SUCCESS) {
+      if (uicc1HciParams.size() > 0) {
+        status = phNxpNciHal_set_uicc_hci_params(
+            uicc1HciParams, uicc1HciParams.size(), EEPROM_UICC1_SESSION_ID);
+        if (status != NFCSTATUS_SUCCESS) {
+          NXPLOG_NCIHAL_E(
+              "%s: NXP Set phNxpNciHal_set_uicc_hci_params for uicc1 failed",
+              __FUNCTION__);
+        } else {
+          uicc1HciParams.resize(0);
+        }
+      }
+      if (uicc2HciParams.size() > 0) {
+        status = phNxpNciHal_set_uicc_hci_params(
+            uicc2HciParams, uicc2HciParams.size(), EEPROM_UICC2_SESSION_ID);
+        if (status != NFCSTATUS_SUCCESS) {
+          NXPLOG_NCIHAL_E(
+              "%s: NXP Set phNxpNciHal_set_uicc_hci_params for uicc2 failed",
+              __FUNCTION__);
+        } else {
+          uicc2HciParams.resize(0);
+        }
+      }
+
       fw_dwnld_flag = false;
       status = phNxpNciHal_write_fw_dw_status(fw_dwnld_flag);
       if (status != NFCSTATUS_SUCCESS) {
@@ -2088,9 +2187,6 @@ NFCSTATUS phNxpNciHalRFConfigCmdRecSequence() {
   if (gRecFwRetryCount > 0x03) {
     NXPLOG_NCIHAL_D("Max retry count for RF config FW recovery exceeded ");
     gRecFWDwnld = false;
-    if(nfcFL.nfccFL._NFCC_FORCE_FW_DOWNLOAD == true) {
-        force_fw_download_req = false;
-    }
     return NFCSTATUS_FAILED;
   }
   do {
@@ -2098,9 +2194,8 @@ NFCSTATUS phNxpNciHalRFConfigCmdRecSequence() {
     phDnldNfc_InitImgInfo();
     if (NFCSTATUS_SUCCESS == phNxpNciHal_CheckValidFwVersion()) {
       status = phNxpNciHal_fw_download();
-#if(NXP_EXTNS != TRUE)
       status = phTmlNfc_Read(
-          nxpncihal_ctrl.p_cmd_data, NCI_MAX_DATA_LEN,
+          nxpncihal_ctrl.p_rsp_data, NCI_MAX_DATA_LEN,
           (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
       if (status != NFCSTATUS_PENDING) {
         NXPLOG_NCIHAL_E("TML Read status error status = %x", status);
@@ -2108,15 +2203,11 @@ NFCSTATUS phNxpNciHalRFConfigCmdRecSequence() {
         phTmlNfc_Shutdown_CleanUp();
         status = NFCSTATUS_FAILED;
       }
-#endif
       break;
     }
     gRecFWDwnld = false;
   } while (recFWState--);
   gRecFWDwnld = false;
-  if(nfcFL.nfccFL._NFCC_FORCE_FW_DOWNLOAD == true) {
-      force_fw_download_req = false;
-  }
   return status;
 }
 
@@ -2209,7 +2300,7 @@ int phNxpNciHal_close(bool bShutdown) {
     return NFCSTATUS_FAILED;
   }
 #if(NXP_EXTNS == TRUE)
-  if(nfcFL.chipType != sn100u){
+  if(nfcFL.chipType < sn100u){
 #endif
     if (!(GetNxpNumValue(NAME_NXP_UICC_LISTEN_TECH_MASK, &uiccListenMask,
                           sizeof(uiccListenMask)))) {
@@ -2238,6 +2329,11 @@ int phNxpNciHal_close(bool bShutdown) {
       if(status != NFCSTATUS_SUCCESS) {
         NXPLOG_NCIHAL_E("CMD_CE_IN_PHONE_OFF: Failed");
       }
+      config_ext.autonomous_mode = 0x00;
+      status = phNxpNciHal_setAutonomousMode();
+      if (status != NFCSTATUS_SUCCESS) {
+        NXPLOG_NCIHAL_E("Autonomous mode Disable: Failed");
+      }
     }
   if (nfcFL.nfccFL._NFCC_I2C_READ_WRITE_IMPROVEMENT &&
           read_failed_disable_nfc) {
@@ -2251,7 +2347,7 @@ int phNxpNciHal_close(bool bShutdown) {
   }
 
 #if(NXP_EXTNS == TRUE)
-  if(nfcFL.chipType != sn100u){
+  if(nfcFL.chipType < sn100u){
 #endif
   if((uiccListenMask & 0x1) == 0x01 || (eseListenMask & 0x1) == 0x01) {
     NXPLOG_NCIHAL_D("phNxpNciHal_close (): Adding A passive listen");
@@ -2291,23 +2387,40 @@ int phNxpNciHal_close(bool bShutdown) {
   }
 #endif
   close_and_return:
+  unsigned long num = 0;
+  /* Sending Core Standby command during phone off added to handle HW limitation
+     in SN220 A0. This Work Around can be removed after SN220 B0 */
+  bool bIsAutonomousModeEnableReqdInPhoneOff = false;
+  int isfound = GetNxpNumValue(NAME_NXP_CORE_PWR_OFF_AUTONOMOUS_ENABLE, &num, sizeof(num));
+  if (isfound)
+    bIsAutonomousModeEnableReqdInPhoneOff = (num == 0x01);
   nxpncihal_ctrl.halStatus = HAL_STATUS_CLOSE;
-  do { /*This is NXP_EXTNS code for retry*/
-    status = phNxpNciHal_send_ext_cmd(sizeof(cmd_reset_nci), cmd_reset_nci);
+  if (bShutdown && bIsAutonomousModeEnableReqdInPhoneOff && (nfcFL.chipType = sn220u)) {
+    NXPLOG_NCIHAL_D("Power shutdown with autonomous mode enable");
+    uint8_t coreStandBy[] = {0x2F, 0x00, 0x01, 0x02};
+    status = phNxpNciHal_send_ext_cmd(sizeof(coreStandBy), coreStandBy);
 
-    if (status == NFCSTATUS_SUCCESS) {
-      break;
-    } else {
-      NXPLOG_NCIHAL_E("NCI_CORE_RESET: Failed, perform retry after delay");
-      usleep(1000 * 1000);
-      retry++;
-      if (retry > 3) {
-        NXPLOG_NCIHAL_E(
-            "Maximum retries performed, shall restart HAL to recover");
-        abort();
-      }
+    if (status != NFCSTATUS_SUCCESS) {
+      NXPLOG_NCIHAL_E("NXP Standby Proprietary Ext failed");
     }
-  } while (retry < 3);
+  } else {
+    do { /*This is NXP_EXTNS code for retry*/
+      status = phNxpNciHal_send_ext_cmd(sizeof(cmd_reset_nci), cmd_reset_nci);
+
+      if (status == NFCSTATUS_SUCCESS) {
+        break;
+      } else {
+        NXPLOG_NCIHAL_E("NCI_CORE_RESET: Failed, perform retry after delay");
+        usleep(1000 * 1000);
+        retry++;
+        if (retry > 3) {
+          NXPLOG_NCIHAL_E(
+              "Maximum retries performed, shall restart HAL to recover");
+          abort();
+        }
+      }
+    } while (retry < 3);
+  }
 
   sem_destroy(&nxpncihal_ctrl.syncSpiNfc);
 
@@ -2388,16 +2501,19 @@ void phNxpNciHal_close_complete(NFCSTATUS status) {
 int phNxpNciHal_configDiscShutdown(void) {
   NFCSTATUS status;
   /*NCI_RESET_CMD*/
-  static uint8_t cmd_reset_nci[] = {0x20, 0x00, 0x01, 0x00};
+  uint8_t cmd_reset_nci[] = {0x20, 0x00, 0x01, 0x00};
 
-  static uint8_t cmd_disable_disc[] = {0x21, 0x06, 0x01, 0x00};
+  uint8_t cmd_disable_disc[] = {0x21, 0x06, 0x01, 0x00};
 
-  static uint8_t cmd_ce_disc_nci[] = {0x21, 0x03, 0x07, 0x03, 0x80,
+  uint8_t cmd_ce_disc_nci[] = {0x21, 0x03, 0x07, 0x03, 0x80,
                                       0x01, 0x81, 0x01, 0x82, 0x01};
 
-  static uint8_t cmd_ven_pulld_enable_nci[] = {0x20, 0x02, 0x05, 0x01,
+  uint8_t cmd_ven_pulld_enable_nci[] = {0x20, 0x02, 0x05, 0x01,
                                          0xA0, 0x07, 0x01, 0x03};
 
+  /* Discover map - PROTOCOL_ISO_DEP, PROTOCOL_T3T and MIFARE Classic*/
+  uint8_t cmd_disc_map[] = {0x21, 0x00, 0x0A, 0x03, 0x04, 0x03, 0x02,
+                                   0x03, 0x02, 0x01, 0x80, 0x01, 0x80};
   CONCURRENCY_LOCK();
 
   status = phNxpNciHal_send_ext_cmd(sizeof(cmd_disable_disc), cmd_disable_disc);
@@ -2405,7 +2521,7 @@ int phNxpNciHal_configDiscShutdown(void) {
     NXPLOG_NCIHAL_E("CMD_DISABLE_DISCOVERY: Failed");
   }
 #if (NXP_EXTNS == TRUE)
-  if (nfcFL.chipType != sn100u) {
+  if (nfcFL.chipType < sn100u) {
 #endif
     status = phNxpNciHal_send_ext_cmd(sizeof(cmd_ven_pulld_enable_nci), cmd_ven_pulld_enable_nci);
     if (status != NFCSTATUS_SUCCESS) {
@@ -2415,7 +2531,11 @@ int phNxpNciHal_configDiscShutdown(void) {
   }
 #endif
 
-  if(nfcFL.chipType == sn100u) {
+  if(nfcFL.chipType >= sn100u) {
+    status = phNxpNciHal_send_ext_cmd(sizeof(cmd_disc_map), cmd_disc_map);
+    if (status != NFCSTATUS_SUCCESS) {
+      NXPLOG_NCIHAL_E("Discovery Map command: Failed");
+    }
     status = phNxpNciHal_ext_send_sram_config_to_flash();
     if(status != NFCSTATUS_SUCCESS) {
       NXPLOG_NCIHAL_E("Updation of the SRAM contents failed");
@@ -2426,7 +2546,7 @@ int phNxpNciHal_configDiscShutdown(void) {
     NXPLOG_NCIHAL_E("CMD_CE_DISC_NCI: Failed");
   }
 #if(NXP_EXTNS == TRUE)
-  if(nfcFL.chipType != sn100u){
+  if(nfcFL.chipType < sn100u){
 #endif
     status = phNxpNciHal_send_ext_cmd(sizeof(cmd_reset_nci), cmd_reset_nci);
     if (status != NFCSTATUS_SUCCESS) {
@@ -2465,43 +2585,43 @@ void phNxpNciHal_getVendorConfig(android::hardware::nfc::V1_1::NfcConfig& config
   memset(&config_ext, 0x00, sizeof(nxp_nfc_config_ext_t));
 
   if ((GetNxpNumValue(NAME_NXP_AUTONOMOUS_ENABLE, &num, sizeof(num)))) {
-    config_ext.autonomous_mode = num;
+    config_ext.autonomous_mode = (uint8_t)num;
   }
   if ((GetNxpNumValue(NAME_NXP_GUARD_TIMER_VALUE, &num, sizeof(num)))) {
-    config_ext.guard_timer_value = num;
+    config_ext.guard_timer_value = (uint8_t)num;
   }
   if (GetNxpNumValue(NAME_NFA_POLL_BAIL_OUT_MODE, &num, sizeof(num))) {
-    config.nfaPollBailOutMode = num;
+    config.nfaPollBailOutMode = (bool)num;
   }
   if (GetNxpNumValue(NAME_ISO_DEP_MAX_TRANSCEIVE, &num, sizeof(num))) {
-    config.maxIsoDepTransceiveLength = num;
+    config.maxIsoDepTransceiveLength = (uint32_t)num;
   }
   if (GetNxpNumValue(NAME_DEFAULT_OFFHOST_ROUTE, &num, sizeof(num))) {
-    config.defaultOffHostRoute = num;
+    config.defaultOffHostRoute = (uint8_t)num;
   }
   if (GetNxpNumValue(NAME_DEFAULT_NFCF_ROUTE, &num, sizeof(num))) {
-    config.defaultOffHostRouteFelica = num;
+    config.defaultOffHostRouteFelica = (uint8_t)num;
   }
   if (GetNxpNumValue(NAME_DEFAULT_SYS_CODE_ROUTE, &num, sizeof(num))) {
-    config.defaultSystemCodeRoute = num;
+    config.defaultSystemCodeRoute = (uint8_t)num;
   }
   if (GetNxpNumValue(NAME_DEFAULT_SYS_CODE_PWR_STATE, &num, sizeof(num))) {
     config.defaultSystemCodePowerState =
-        phNxpNciHal_updateAutonomousPwrState(num);
+        phNxpNciHal_updateAutonomousPwrState((uint8_t)num);
   }
   if (GetNxpNumValue(NAME_DEFAULT_ROUTE, &num, sizeof(num))) {
-    config.defaultRoute = num;
+    config.defaultRoute = (uint8_t)num;
   }
   if (GetNxpByteArrayValue(NAME_DEVICE_HOST_WHITE_LIST, (char*)buffer.data(), buffer.size(), &retlen)) {
     config.hostWhitelist.resize(retlen);
-    for(int i=0; i<retlen; i++)
+    for (long i = 0; i < retlen; i++)
       config.hostWhitelist[i] = buffer[i];
   }
   if (GetNxpNumValue(NAME_OFF_HOST_ESE_PIPE_ID, &num, sizeof(num))) {
-    config.offHostESEPipeId = num;
+    config.offHostESEPipeId = (uint8_t)num;
   }
   if (GetNxpNumValue(NAME_OFF_HOST_SIM_PIPE_ID, &num, sizeof(num))) {
-    config.offHostSIMPipeId = num;
+    config.offHostSIMPipeId = (uint8_t)num;
   }
   if ((GetNxpByteArrayValue(NAME_NFA_PROPRIETARY_CFG, (char*)buffer.data(), buffer.size(), &retlen))
          && (retlen == 9)) {
@@ -2553,7 +2673,7 @@ void phNxpNciHal_getVendorConfig_1_2(android::hardware::nfc::V1_2::NfcConfig& co
       config.offHostRouteEse[i] = buffer[i];
   }
 
-  if ((GetNxpNumValue(NAME_DEFAULT_ISODEP_ROUTE, &num, sizeof(num))) && (num <= 4) ) {
+  if (GetNxpNumValue(NAME_DEFAULT_ISODEP_ROUTE, &num, sizeof(num))) {
       config.defaultIsoDepRoute = num;
   }
 
@@ -2875,7 +2995,7 @@ int   phNxpNciHal_determineConfiguredClockSrc()
     if(nfcFL.chipType == pn553) {
         param_clock_src = param_clock_src << 3;
     }
-    else if(nfcFL.chipType == sn100u)
+    else if(nfcFL.chipType >= sn100u)
     {
         param_clock_src = 0;
     }
@@ -2907,7 +3027,7 @@ int   phNxpNciHal_determineConfiguredClockSrc()
         else
         {
             NXPLOG_NCIHAL_E("Wrong clock freq, send default PLL@19.2MHz");
-            if(nfcFL.chipType != sn100u)
+            if(nfcFL.chipType < sn100u)
                 param_clock_src = 0x11;
             else
                 param_clock_src = 0x01;
@@ -3000,7 +3120,7 @@ NFCSTATUS phNxpNciHal_nfccClockCfgApply(void) {
       0x01, 0x0A, 0x32, 0x02, 0x01, 0xF6, 0xF6};
   uint8_t get_clk_size = 0;
 
-  if(nfcFL.chipType != sn100u)
+  if(nfcFL.chipType < sn100u)
   {
      get_clock_cmd = get_clck_cmd;
      get_clk_size = sizeof(get_clck_cmd);
@@ -3021,7 +3141,7 @@ NFCSTATUS phNxpNciHal_nfccClockCfgApply(void) {
   }
 
   nfcc_cfg_clock_src = phNxpNciHal_determineConfiguredClockSrc();
-  if(nfcFL.chipType != sn100u)
+  if(nfcFL.chipType < sn100u)
   {
       nfcc_cur_clock_src = phNxpNciClock.p_rx_data[12];
   }else
@@ -3029,7 +3149,7 @@ NFCSTATUS phNxpNciHal_nfccClockCfgApply(void) {
       nfcc_cur_clock_src = phNxpNciClock.p_rx_data[8];
   }
 
-  if(nfcFL.chipType != sn100u)
+  if(nfcFL.chipType < sn100u)
   {
       nfcc_clock_set_needed = (nfcc_cfg_clock_src != nfcc_cur_clock_src ||
                                   phNxpNciClock.p_rx_data[16] == nxpprofile_ctrl.bTimeout) ?\
@@ -3366,6 +3486,177 @@ retry_send_ext:
 }
 
 /******************************************************************************
+ * Function         phNxpNciHal_CheckAndHandleFwTearDown
+ *
+ * Description      Check Whether chip is in FW download mode, If chip is in
+ *                  Download mode and previous session is not complete, then
+ *                  Do force FW update.
+ *
+ * Returns          Status
+ *
+ ******************************************************************************/
+void phNxpNciHal_CheckAndHandleFwTearDown() {
+  NFCSTATUS status = NFCSTATUS_FAILED;
+  uint8_t session_state = -1;
+  status = phNxpNciHal_getChipInfoInFwDnldMode();
+  if (status != NFCSTATUS_SUCCESS) {
+    NXPLOG_NCIHAL_E("Get Chip Info Failed");
+    usleep(150 * 1000);
+    return;
+  }
+  session_state = phNxpNciHal_getSessionInfoInFwDnldMode();
+  if (session_state == 0) {
+    NXPLOG_NCIHAL_E("NFC not in the teared state, boot NFCC in NCI mode");
+    return;
+  }
+
+  phTmlNfc_IoCtl(phTmlNfc_e_EnableDownloadMode);
+  phTmlNfc_EnableFwDnldMode(true);
+  nxpncihal_ctrl.fwdnld_mode_reqd = TRUE;
+
+  /* Set the obtained device handle to download module */
+  phDnldNfc_SetHwDevHandle();
+  NXPLOG_NCIHAL_D("Calling Seq handler for FW Download \n");
+  status = phNxpNciHal_fw_download_seq(nxpprofile_ctrl.bClkSrcVal,
+                                       nxpprofile_ctrl.bClkFreqVal);
+  if (status != NFCSTATUS_SUCCESS) {
+    NXPLOG_NCIHAL_E("FW Download Sequence Handler Failed.");
+  }
+  phDnldNfc_ReSetHwDevHandle();
+
+  nxpncihal_ctrl.fwdnld_mode_reqd = FALSE;
+  phTmlNfc_EnableFwDnldMode(false);
+  phNxpNciHal_enableTmlRead();
+  fw_download_success = 1;
+  property_set("nfc.fw.downloadmode_force", "1");
+
+  status = phNxpNciHal_dlResetInFwDnldMode();
+  if (status != NFCSTATUS_SUCCESS) {
+    NXPLOG_NCIHAL_E("DL Reset failed in FW DN mode");
+  }
+}
+
+/******************************************************************************
+ * Function         phNxpNciHal_getChipInfoInFwDnldMode
+ *
+ * Description      Helper function to get the chip info in download mode
+ *
+ * Returns          Status
+ *
+ ******************************************************************************/
+NFCSTATUS phNxpNciHal_getChipInfoInFwDnldMode(bool bIsVenResetReqd) {
+  uint8_t get_chip_info_cmd[] = {0x00, 0x04, 0xF1, 0x00,
+                                 0x00, 0x00, 0x6E, 0xEF};
+  NFCSTATUS status = NFCSTATUS_FAILED;
+  int retry_cnt = 0;
+  if (bIsVenResetReqd) {
+    status = phTmlNfc_IoCtl(phTmlNfc_e_EnableDownloadModeWithVenRst);
+    if (status != NFCSTATUS_SUCCESS) {
+      NXPLOG_NCIHAL_E("Enable Download mode failed");
+    }
+  }
+  phTmlNfc_EnableFwDnldMode(true);
+  nxpncihal_ctrl.fwdnld_mode_reqd = TRUE;
+get_chip_info_retry:
+  status =
+      phNxpNciHal_send_ext_cmd(sizeof(get_chip_info_cmd), get_chip_info_cmd);
+  if(status == NFCSTATUS_SUCCESS) {
+    /* Check FW getResponse command response status byte */
+    if(nxpncihal_ctrl.p_rx_data[0] == 0x00) {
+      if (nxpncihal_ctrl.p_rx_data[2] != 0x00) {
+        status = NFCSTATUS_FAILED;
+        if (retry_cnt < MAX_RETRY_COUNT) {
+          /*reset NFCC state to avoid any failures
+           *such as DL_PROTOCOL_ERROR
+           */
+          status = phNxpNciHal_dlResetInFwDnldMode();
+          if (status != NFCSTATUS_SUCCESS) {
+            NXPLOG_NCIHAL_E("DL Reset failed in FW DN mode");
+          }
+          goto get_chip_info_retry;
+        }
+      }
+    } else {
+      status = NFCSTATUS_FAILED;
+    }
+  }
+
+  nxpncihal_ctrl.fwdnld_mode_reqd = FALSE;
+  phTmlNfc_EnableFwDnldMode(false);
+  phNxpNciHal_enableTmlRead();
+  if (status == NFCSTATUS_SUCCESS) {
+    phNxpNciHal_configFeatureList(nxpncihal_ctrl.p_rx_data,
+                                  nxpncihal_ctrl.rx_data_len);
+    setNxpFwConfigPath(nfcFL._FW_LIB_PATH.c_str());
+  }
+  return status;
+}
+
+
+/******************************************************************************
+ * Function         phNxpNciHal_getSessionInfoInFwDnldMode
+ *
+ * Description      Helper function to get the session info in download mode
+ *
+ * Returns          0 means session closed
+ *
+ ******************************************************************************/
+uint8_t phNxpNciHal_getSessionInfoInFwDnldMode() {
+  uint8_t session_status = -1;
+  uint8_t get_session_info_cmd[] = {0x00, 0x04, 0xF2, 0x00,
+                                    0x00, 0x00, 0xF5, 0x33};
+  phTmlNfc_EnableFwDnldMode(true);
+  nxpncihal_ctrl.fwdnld_mode_reqd = TRUE;
+  NFCSTATUS status = phNxpNciHal_send_ext_cmd(sizeof(get_session_info_cmd),
+                                              get_session_info_cmd);
+  if (status == NFCSTATUS_SUCCESS) {
+    /* Check FW getResponse command response status byte */
+    if (nxpncihal_ctrl.p_rx_data[2] == 0x00 &&
+        nxpncihal_ctrl.p_rx_data[0] == 0x00) {
+      if (nxpncihal_ctrl.p_rx_data[3] == 0x00) {
+        session_status = 0;
+      }
+    } else {
+      NXPLOG_NCIHAL_D("get session info Failed !!!");
+      usleep(150 * 1000);
+    }
+  }
+  nxpncihal_ctrl.fwdnld_mode_reqd = FALSE;
+  phTmlNfc_EnableFwDnldMode(false);
+  phNxpNciHal_enableTmlRead();
+  status = phNxpNciHal_dlResetInFwDnldMode();
+  if (status != NFCSTATUS_SUCCESS) {
+    NXPLOG_NCIHAL_E("DL Reset failed in FW DN mode");
+  }
+  return session_status;
+}
+
+/******************************************************************************
+ * Function         phNxpNciHal_dlResetInFwDnldMode
+ *
+ * Description      Helper function to change the mode from FW to NCI
+ *
+ * Returns          Status
+ *
+ ******************************************************************************/
+NFCSTATUS phNxpNciHal_dlResetInFwDnldMode() {
+  NFCSTATUS status = NFCSTATUS_FAILED;
+  uint8_t dl_reset_cmd[] = {0x00, 0x04, 0xF0, 0x00, 0x00, 0x00, 0x18, 0x5B};
+  phTmlNfc_EnableFwDnldMode(true);
+  nxpncihal_ctrl.fwdnld_mode_reqd = TRUE;
+  NXPLOG_NCIHAL_D("Sending DL Reset to boot NFCC in NCI mode");
+  int retLen = phNxpNciHal_write(sizeof(dl_reset_cmd), dl_reset_cmd);
+  if (retLen == (sizeof(dl_reset_cmd)/sizeof(dl_reset_cmd[0]))) {
+    NXPLOG_NCIHAL_D("DL Reset Success");
+    status = NFCSTATUS_SUCCESS;
+  }
+  nxpncihal_ctrl.fwdnld_mode_reqd = FALSE;
+  phTmlNfc_EnableFwDnldMode(false);
+  phNxpNciHal_enableTmlRead();
+  return status;
+}
+
+/******************************************************************************
  * Function         phNxpNciHal_gpio_restore
  *
  * Description      This function restores the gpio values into eeprom
@@ -3434,11 +3725,14 @@ static void phNxpNciHal_gpio_restore(phNxpNciHal_GpioInfoState state) {
  * Returns          Status
  *
  ******************************************************************************/
-NFCSTATUS phNxpNciHal_nfcc_core_reset_init() {
+NFCSTATUS phNxpNciHal_nfcc_core_reset_init(bool keep_config) {
   NFCSTATUS status = NFCSTATUS_FAILED;
   uint8_t retry_cnt = 0;
   uint8_t cmd_reset_nci[] = {0x20, 0x00, 0x01, 0x01};
 
+  if (keep_config) {
+    cmd_reset_nci[3] = 0x00;
+  }
 retry_core_reset:
   status = phNxpNciHal_send_ext_cmd(sizeof(cmd_reset_nci), cmd_reset_nci);
   if ((status != NFCSTATUS_SUCCESS) && (retry_cnt < 3)) {
@@ -3482,21 +3776,20 @@ retry_core_init:
  * Returns          Status
  *
  ******************************************************************************/
-NFCSTATUS phNxpNciHal_resetDefaultSettings() {
-  NFCSTATUS status = NFCSTATUS_FAILED;
-
-  if(fw_download_success)
-    status = phNxpNciHal_nfcc_core_reset_init();
-  else
-    status = NFCSTATUS_SUCCESS;
-
+NFCSTATUS phNxpNciHal_resetDefaultSettings(uint8_t fw_update_req, bool keep_config) {
+  NFCSTATUS status = NFCSTATUS_SUCCESS;
+  if (fw_update_req) {
+    status = phNxpNciHal_nfcc_core_reset_init(keep_config);
+  }
   if(status == NFCSTATUS_SUCCESS) {
     unsigned long num = 0;
     int ret = 0;
     phNxpNciHal_conf_nfc_forum_mode();
     ret = GetNxpNumValue(NAME_NXP_RDR_DISABLE_ENABLE_LPCD, &num, sizeof(num));
-    if (!ret || (num == 1)) {
-      phNxpNciHal_prop_conf_lpcd();
+    if (!ret || num == 1 || num == 2) {
+      phNxpNciHal_prop_conf_lpcd(true);
+    } else if (ret && num == 0) {
+      phNxpNciHal_prop_conf_lpcd(false);
     }
   }
   return status;
@@ -3759,7 +4052,7 @@ static void phNxpNciHal_print_res_status(uint8_t* p_rx_data, uint16_t* p_len) {
 static void phNxpNciHal_initialize_mifare_flag() {
   unsigned long num = 0;
   bEnableMfcReader = false;
-  bDisableLegacyMfcExtns = false;
+  bDisableLegacyMfcExtns = true;
   //1: Enable Mifare Classic protocol in RF Discovery.
   //0: Remove Mifare Classic protocol in RF Discovery.
   if(GetNxpNumValue(NAME_MIFARE_READER_ENABLE, &num, sizeof(num))) {
@@ -3816,32 +4109,6 @@ NFCSTATUS phNxpNciHal_send_get_cfgs() {
   }
   return status;
 }
-/*******************************************************************************
-**
-** Function         phNxpNciHal_getFWDownloadFlags
-**
-** Description      Returns the current mode
-**
-** Parameters       none
-**
-** Returns          Current mode download/NCI
-*******************************************************************************/
-int phNxpNciHal_getFWDownloadFlag(uint8_t* fwDnldRequest) {
-  int status = NFCSTATUS_FAILED;
-
-  NXPLOG_NCIHAL_D("notifyFwrequest %d", notifyFwrequest);
-  if (fwDnldRequest != NULL) {
-    status = NFCSTATUS_OK;
-    if (notifyFwrequest == true) {
-      *fwDnldRequest = true;
-      notifyFwrequest = false;
-    } else {
-      *fwDnldRequest = false;
-    }
-  }
-
-  return status;
-}
 
 /*******************************************************************************
 **
@@ -3861,8 +4128,6 @@ void phNxpNciHal_configFeatureList(uint8_t* init_rsp, uint16_t rsp_len) {
     tNFC_chipType chipType = nxpncihal_ctrl.chipType;
     NXPLOG_NCIHAL_D("phNxpNciHal_configFeatureList ()chipType = %d", chipType);
     CONFIGURE_FEATURELIST(chipType);
-    NXPLOG_NCIHAL_D("phNxpNciHal_configFeatureList ()chipType = %d", chipType);
-        NXPLOG_NCIHAL_D("phNxpNciHal_configFeatureList ()FW = %d", nfcFL._FW_MOBILE_MAJOR_NUMBER);
 }
 
 /*******************************************************************************
@@ -3940,18 +4205,11 @@ void phNxpNciHal_configNciParser(bool enable)
         if (lx_debug_cfg & LX_DEBUG_CFG_ENABLE_L2_EVENT_READER) {
           NXPLOG_NCIHAL_D("Enable L2 RF NTF debugs (Reader)");
         }
-        cmd_lxdebug[7] = lx_debug_cfg & ~LX_DEBUG_CFG_MASK_RSSI;
-        if((lx_debug_cfg & LX_DEBUG_CFG_MASK_RSSI) == 0x0100)
-        {/*If valid value id present for the RSSI i.e. Byte1 of the flag*/
-            if(lx_debug_cfg & (LX_DEBUG_CFG_ENABLE_L1_EVENT | LX_DEBUG_CFG_ENABLE_L2_EVENT)){
-                NXPLOG_NCIHAL_D("Enable RSSI");
-                cmd_lxdebug[8] = LX_DEBUG_CFG_ENABLE_RSSI;;
-            }else{
-                NXPLOG_NCIHAL_E("RSSI should be used only with L1 and L2 events!!\nDiscarding RSSI....");
-            }
-        }else{
-            NXPLOG_NCIHAL_E("Invalid RSSI Value!!\nDiscarding RSSI....");
+        if (lx_debug_cfg & LX_DEBUG_CFG_ENABLE_MOD_DETECTED_EVENT ) {
+          NXPLOG_NCIHAL_D("Enable Modulation detected event");
         }
+
+        cmd_lxdebug[7] = (uint8_t)lx_debug_cfg & LX_DEBUG_CFG_MASK;
     }
     status = phNxpNciHal_send_ext_cmd(sizeof(cmd_lxdebug)/sizeof(cmd_lxdebug[0]),cmd_lxdebug);
     if (status != NFCSTATUS_SUCCESS)

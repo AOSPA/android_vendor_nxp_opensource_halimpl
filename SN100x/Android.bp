@@ -24,7 +24,8 @@ cc_library_shared {
         "-Werror",
         "-Wextra",
         "-DNXP_EXTNS=TRUE",
-        "-DNXP_HW_SELF_TEST=TRUE"
+        "-DNXP_HW_SELF_TEST=TRUE",
+        "-DNXP_SRD=TRUE"
     ],
 
     srcs: [
@@ -43,8 +44,9 @@ cc_library_shared {
         "halimpl/tml/phDal4Nfc_messageQueueLib.cc",
         "halimpl/tml/phOsalNfc_Timer.cc",
         "halimpl/tml/phTmlNfc.cc",
-        "halimpl/tml/phTmlNfc_i2c.cc",
         "halimpl/tml/spi_spm.cc",
+        "halimpl/tml/NfccTransportFactory.cc",
+        "halimpl/tml/transport/*.cc",
         "halimpl/utils/NxpNfcCapability.cc",
         "halimpl/utils/phNxpConfig.cc",
         "halimpl/utils/phNxpNciHal_utils.cc",
@@ -62,6 +64,7 @@ cc_library_shared {
         "halimpl/inc",
         "halimpl/log",
         "halimpl/self-test",
+        "halimpl/tml/transport",
         "halimpl/tml",
         "halimpl/utils",
         "halimpl/eseclients_extns/inc",

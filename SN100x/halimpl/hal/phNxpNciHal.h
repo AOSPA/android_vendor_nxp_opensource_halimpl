@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2020 NXP Semiconductors
+ * Copyright (C) 2010-2020 NXP
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,10 @@
 #define NCI_VERSION_1_0 0x10
 #define NCI_VERSION_UNKNOWN 0x00
 #define NXP_AUTH_TIMEOUT_BUF_LEN 0x04
+#define SN1XX_ROM_VERSION      0x01
+#define SN1XX_FW_MAJOR_VERSION 0x10
+#define SN2XX_ROM_VERSION      0x01
+#define SN2XX_FW_MAJOR_VERSION 0x01
 #define SN100_CHIPID "0xa4"
 
 /* Uncomment define ENABLE_ESE_CLIENT to
@@ -216,7 +220,6 @@ typedef int (*fpRegRfFwDndl_t)(uint8_t* fw_update_req,
                    uint8_t skipEEPROMRead);
 typedef int (*fpPropConfCover_t)(bool attached, int type);
 void phNxpNciHal_initializeRegRfFwDnld();
-void phNxpNciHal_initializeRegRfFwDnld();
 void phNxpNciHal_deinitializeRegRfFwDnld();
 /*set config management*/
 
@@ -251,6 +254,10 @@ typedef enum {
   EEPROM_AUTONOMOUS_MODE,
   EEPROM_CE_PHONE_OFF_CFG,
   EEPROM_ENABLE_VEN_CFG,
+  EEPROM_ISODEP_MERGE_SAK,
+  EEPROM_SRD_TIMEOUT,
+  EEPROM_UICC1_SESSION_ID,
+  EEPROM_UICC2_SESSION_ID,
 } phNxpNci_EEPROM_request_type_t;
 
 typedef struct phNxpNci_EEPROM_info {
@@ -277,6 +284,7 @@ typedef struct phNxpNci_getCfg_info {
 typedef enum {
   NFC_FORUM_PROFILE,
   EMV_CO_PROFILE,
+  SRD_PROFILE,
   INVALID_PROFILe
 } phNxpNciProfile_t;
 /* NXP Poll Profile control structure */
@@ -310,8 +318,8 @@ int phNxpNciHal_write_unlocked(uint16_t data_len, const uint8_t *p_data,
                                int origin);
 NFCSTATUS request_EEPROM(phNxpNci_EEPROM_info_t* mEEPROM_info);
 int phNxpNciHal_check_config_parameter();
-NFCSTATUS phNxpNciHal_fw_download(void);
-NFCSTATUS phNxpNciHal_nfcc_core_reset_init();
+NFCSTATUS phNxpNciHal_fw_download(uint8_t seq_handler_offset = 0, bool bIsNfccDlState = false);
+NFCSTATUS phNxpNciHal_nfcc_core_reset_init(bool keep_config = false);
 int phNxpNciHal_fw_mw_ver_check();
 NFCSTATUS phNxpNciHal_check_clock_config(void);
 NFCSTATUS phNxpNciHal_china_tianjin_rf_setting(void);
@@ -380,5 +388,36 @@ NFCSTATUS phNxpNciHal_read_fw_dw_status(uint8_t &value);
  *
  ******************************************************************************/
 NFCSTATUS phNxpNciHal_write_fw_dw_status(uint8_t value);
+
+/******************************************************************************
+ * Function         phNxpNciHal_set_uicc_hci_params
+ *
+ * Description      This will update value of uicc session status to store flag
+ *                  to eeprom
+ *
+ * Parameters       value - this value will be updated to eeprom flag.
+ *
+ * Returns          status of the write
+ *
+ ******************************************************************************/
+NFCSTATUS
+phNxpNciHal_set_uicc_hci_params(std::vector<uint8_t> &ptr, uint8_t bufflen,
+                                phNxpNci_EEPROM_request_type_t uiccType);
+
+/******************************************************************************
+ * Function         phNxpNciHal_get_uicc_hci_params
+ *
+ * Description      This will read the value of fw download status flag
+ *                  from eeprom
+ *
+ * Parameters       value - this parameter will be updated with the flag
+ *                  value from eeprom.
+ *
+ * Returns          status of the read
+ *
+ ******************************************************************************/
+NFCSTATUS
+phNxpNciHal_get_uicc_hci_params(std::vector<uint8_t> &ptr, uint8_t bufflen,
+                                phNxpNci_EEPROM_request_type_t uiccType);
 
 #endif /* _PHNXPNCIHAL_H_ */

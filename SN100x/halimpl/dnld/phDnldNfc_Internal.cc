@@ -2,7 +2,7 @@
  * Copyright (c) 2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
- * Copyright (C) 2010-2019 NXP Semiconductors
+ * Copyright (C) 2010-2020 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,6 +58,10 @@
   ((n) | (1 << 10)) /* Header chunk bit set macro */
 #define PHDNLDNFC_CLR_HDR_FRAGBIT(n) \
   ((n) & ~(1U << 10)) /* Header chunk bit clear macro */
+#define PHDNLDNFC_SET_HDR_FRAGBIT_SN220(n) \
+  ((n) | (1 << 13)) /* Header chunk bit set macro */
+#define PHDNLDNFC_CLR_HDR_FRAGBIT_SN220(n) \
+  ((n) & ~(1U << 13)) /* Header chunk bit clear macro */
 #define PHDNLDNFC_CHK_HDR_FRAGBIT(n) \
   ((n)&0x04) /* macro to check if frag bit is set in Hdr */
 
@@ -226,12 +230,11 @@ static void phDnldNfc_ProcessSeqState(void* pContext,
 
         if (NFCSTATUS_SUCCESS == wStatus) {
           pDlCtxt->tCurrState = phDnldNfc_StateRecv;
-
           phTmlNfc_Read(
               pDlCtxt->tCmdRspFrameInfo.aFrameBuff,
               (uint16_t)PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE,
               (pphTmlNfc_TransactCompletionCb_t)&phDnldNfc_ProcessSeqState,
-              (void*)pDlCtxt);
+              (void *)pDlCtxt);
           wStatus = phTmlNfc_Write(
               (pDlCtxt->tCmdRspFrameInfo.aFrameBuff),
               (uint16_t)(pDlCtxt->tCmdRspFrameInfo.dwSendlength),
@@ -613,7 +616,11 @@ static NFCSTATUS phDnldNfc_BuildFramePkt(pphDnldNfc_DlContext_t pDlContext) {
           if (0 != (pDlContext->tRWInfo.wRWPldSize)) {
             if (true == (pDlContext->tRWInfo.bFramesSegmented)) {
               /* Turning ON the Fragmentation bit in FrameLen */
-              wFrameLen = PHDNLDNFC_SET_HDR_FRAGBIT(wFrameLen);
+              if (nfcFL.chipType == sn220u) {
+                wFrameLen = PHDNLDNFC_SET_HDR_FRAGBIT_SN220(wFrameLen);
+              }else {
+                wFrameLen = PHDNLDNFC_SET_HDR_FRAGBIT(wFrameLen);
+              }
             }
 
             pFrameByte = (uint8_t*)&wFrameLen;
@@ -624,7 +631,11 @@ static NFCSTATUS phDnldNfc_BuildFramePkt(pphDnldNfc_DlContext_t pDlContext) {
                 .aFrameBuff[PHDNLDNFC_FRAME_HDR_OFFSET + 1] = pFrameByte[0];
 
             /* To ensure we have no frag bit set for crc calculation */
-            wFrameLen = PHDNLDNFC_CLR_HDR_FRAGBIT(wFrameLen);
+            if (nfcFL.chipType == sn220u) {
+              wFrameLen = PHDNLDNFC_CLR_HDR_FRAGBIT_SN220(wFrameLen);
+            }else {
+              wFrameLen = PHDNLDNFC_CLR_HDR_FRAGBIT(wFrameLen);
+            }
 
             wFrameLen += PHDNLDNFC_FRAME_HDR_LEN;
           }
@@ -687,7 +698,7 @@ static NFCSTATUS phDnldNfc_CreateFramePld(pphDnldNfc_DlContext_t pDlContext) {
       (pDlContext->tCmdRspFrameInfo.dwSendlength) += PHDNLDNFC_MIN_PLD_LEN;
     } else if (phDnldNfc_ChkIntg == (pDlContext->FrameInp.Type)) {
       (pDlContext->tCmdRspFrameInfo.dwSendlength) += PHDNLDNFC_MIN_PLD_LEN;
-    if (nfcFL.chipType != sn100u) {
+    if (nfcFL.chipType < sn100u) {
       wChkIntgVal = nfcFL._PHDNLDNFC_USERDATA_EEPROM_OFFSET;
 
       memcpy(&(pDlContext->tCmdRspFrameInfo
@@ -764,7 +775,7 @@ static NFCSTATUS phDnldNfc_CreateFramePld(pphDnldNfc_DlContext_t pDlContext) {
              &(pDlContext->tRWInfo.wBytesToSendRecv),
              (sizeof(pDlContext->tRWInfo.wBytesToSendRecv)));
 
-      wBuffIdx += sizeof(pDlContext->tRWInfo.wBytesToSendRecv);
+      wBuffIdx += (uint32_t)sizeof(pDlContext->tRWInfo.wBytesToSendRecv);
 
       memcpy(&(pDlContext->tCmdRspFrameInfo.aFrameBuff[wBuffIdx]),
              &(pDlContext->tRWInfo.dwAddr), sizeof(pDlContext->tRWInfo.dwAddr));

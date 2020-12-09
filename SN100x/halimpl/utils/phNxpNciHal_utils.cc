@@ -37,7 +37,7 @@
 *******************************************************************************/
 int listInit(struct listHead* pList) {
   pList->pFirst = NULL;
-  if (pthread_mutex_init(&pList->mutex, NULL) == -1) {
+  if (pthread_mutex_init(&pList->mutex, NULL) != 0) {
     NXPLOG_NCIHAL_E("Mutex creation failed (errno=0x%08x)", errno);
     return 0;
   }
@@ -267,12 +267,12 @@ phNxpNciHal_Monitor_t* phNxpNciHal_init_monitor(void) {
   if (nxpncihal_monitor != NULL) {
     memset(nxpncihal_monitor, 0x00, sizeof(phNxpNciHal_Monitor_t));
 
-    if (pthread_mutex_init(&nxpncihal_monitor->reentrance_mutex, NULL) == -1) {
+    if (pthread_mutex_init(&nxpncihal_monitor->reentrance_mutex, NULL) != 0) {
       NXPLOG_NCIHAL_E("reentrance_mutex creation returned 0x%08x", errno);
       goto clean_and_return;
     }
 
-    if (pthread_mutex_init(&nxpncihal_monitor->concurrency_mutex, NULL) == -1) {
+    if (pthread_mutex_init(&nxpncihal_monitor->concurrency_mutex, NULL) != 0) {
       NXPLOG_NCIHAL_E("concurrency_mutex creation returned 0x%08x", errno);
       pthread_mutex_destroy(&nxpncihal_monitor->reentrance_mutex);
       goto clean_and_return;
@@ -479,16 +479,6 @@ void phNxpNciHal_emergency_recovery(uint8_t status) {
   case CORE_RESET_TRIGGER_TYPE_WATCHDOG_RESET:
   case CORE_RESET_TRIGGER_TYPE_INPUT_CLOCK_LOST:
   case CORE_RESET_TRIGGER_TYPE_UNRECOVERABLE_ERROR: {
-    const uint8_t cmd[] = {0x20, 0x03, 0x0B, 0x05, 0xA0, 0x39, 0xA0,
-                     0x1A, 0xA0, 0x1B, 0xA0, 0x1C, 0xA0, 0x27};
-    if (!phNxpNciHal_nfcc_core_reset_init()) {
-      if (phNxpNciHal_send_get_cfg(cmd, sizeof(cmd))) {
-        NXPLOG_NCIHAL_E("%s Get config failed.", __func__);
-      }
-    } else {
-      NXPLOG_NCIHAL_E(
-          "Core reset and init failed..! aborting without Getconfig");
-    }
     NXPLOG_NCIHAL_E("abort()");
     abort();
   }

@@ -22,7 +22,6 @@
 
 #define NCI_HEADER_SIZE 3
 #define NCI_SE_CMD_LEN  4
-
 nxp_nfc_config_ext_t config_ext;
 /******************************************************************************
  * Function         phNxpNciHal_updateAutonomousPwrState
@@ -50,7 +49,11 @@ uint8_t phNxpNciHal_updateAutonomousPwrState(uint8_t num) {
  *
  ******************************************************************************/
 NFCSTATUS phNxpNciHal_setAutonomousMode() {
-
+  if (nfcFL.chipType != sn100u) {
+    NXPLOG_NCIHAL_D("%s : Not applicable for chipType %d",
+                                  __func__, nfcFL.chipType);
+    return NFCSTATUS_SUCCESS;
+  }
   phNxpNci_EEPROM_info_t mEEPROM_info = {.request_mode = 0};
   uint8_t autonomous_mode_value = 0x01;
   if (config_ext.autonomous_mode == true)
@@ -144,20 +147,20 @@ void phNxpNciHal_read_and_update_se_state()
       case SE_TYPE_ESE:
         NXPLOG_NCIHAL_D("Get property : SUPPORT_ESE %d", val);
         values[SE_TYPE_ESE] = val;
-        if(val != -1) {
+        if(val > -1) {
           num_se++;
         }
         break;
       case SE_TYPE_UICC:
         NXPLOG_NCIHAL_D("Get property : SUPPORT_UICC %d", val);
         values[SE_TYPE_UICC] = val;
-        if(val != -1) {
+        if(val > -1) {
           num_se++;
         }
         break;
       case SE_TYPE_UICC2:
         values[SE_TYPE_UICC2] = val;
-        if(val != -1) {
+        if(val > -1) {
           num_se++;
         }
         NXPLOG_NCIHAL_D("Get property : SUPPORT_UICC2 %d", val);
@@ -176,7 +179,7 @@ void phNxpNciHal_read_and_update_se_state()
   for (i = 0; i < NUM_SE_TYPES; i++) {
     switch(i) {
       case SE_TYPE_ESE:
-        if(values[SE_TYPE_ESE] != -1) {
+        if(values[SE_TYPE_ESE] > -1) {
           *index++ = 0xA0;
           *index++ = 0xED;
           *index++ = 0x01;
@@ -184,7 +187,7 @@ void phNxpNciHal_read_and_update_se_state()
         }
         break;
       case SE_TYPE_UICC:
-        if(values[SE_TYPE_UICC] != -1) {
+        if(values[SE_TYPE_UICC] > -1) {
           *index++ = 0xA0;
           *index++ = 0xEC;
           *index++ = 0x01;
@@ -192,7 +195,7 @@ void phNxpNciHal_read_and_update_se_state()
         }
         break;
       case SE_TYPE_UICC2:
-        if(values[SE_TYPE_UICC2] != -1) {
+        if(values[SE_TYPE_UICC2] > -1) {
           *index++ = 0xA0;
           *index++ = 0xD4;
           *index++ = 0x01;
@@ -250,6 +253,61 @@ NFCSTATUS phNxpNciHal_write_fw_dw_status(uint8_t value) {
   return request_EEPROM(&mEEPROM_info);
 }
 
+/******************************************************************************
+ * Function         phNxpNciHal_get_uicc_hci_params
+ *
+ * Description      This will read the UICC HCI param values
+ *                  from eeprom
+ *
+ * Parameters       value - this parameter will be updated with the flag
+ *                  value from eeprom.
+ *
+ * Returns          status of the read
+ *
+ ******************************************************************************/
+NFCSTATUS
+phNxpNciHal_get_uicc_hci_params(std::vector<uint8_t> &ptr, uint8_t bufflen,
+                                phNxpNci_EEPROM_request_type_t uiccType) {
+  if (nfcFL.chipType < sn220u) {
+    NXPLOG_NCIHAL_E("%s Not supported", __func__);
+    return NFCSTATUS_SUCCESS;
+  }
+  phNxpNci_EEPROM_info_t mEEPROM_info = {.request_mode = 0};
+  mEEPROM_info.buffer = &ptr[0];
+  mEEPROM_info.bufflen = bufflen;
+  mEEPROM_info.request_type = uiccType;
+  mEEPROM_info.request_mode = GET_EEPROM_DATA;
+  NFCSTATUS status = request_EEPROM(&mEEPROM_info);
+  ptr.resize(mEEPROM_info.bufflen);
+  return status;
+}
+
+/******************************************************************************
+ * Function         phNxpNciHal_set_uicc_hci_params
+ *
+ * Description      This will update the UICC HCI param values
+ *                  to eeprom
+ *
+ * Parameters       value - this value will be updated to eeprom flag.
+ *
+ * Returns          status of the write
+ *
+ *****************************************************************************/
+NFCSTATUS
+phNxpNciHal_set_uicc_hci_params(std::vector<uint8_t> &ptr, uint8_t bufflen,
+                                phNxpNci_EEPROM_request_type_t uiccType) {
+  if (nfcFL.chipType < sn220u) {
+    NXPLOG_NCIHAL_E("%s Not supported", __func__);
+    return NFCSTATUS_SUCCESS;
+  }
+  phNxpNci_EEPROM_info_t mEEPROM_info = {.request_mode = 0};
+  mEEPROM_info.buffer = &ptr[0];
+  mEEPROM_info.bufflen = bufflen;
+  mEEPROM_info.request_type = uiccType;
+  mEEPROM_info.request_mode = SET_EEPROM_DATA;
+  return request_EEPROM(&mEEPROM_info);
+}
+
 /*****************************************************************************
  * Function         phNxpNciHal_send_get_cfg
  *
@@ -280,3 +338,96 @@ NFCSTATUS phNxpNciHal_send_get_cfg(const uint8_t *cmd_get_cfg, long cmd_len) {
   NXPLOG_NCIHAL_D("%s status : 0x%02X", __func__, status);
   return status;
 }
+
+/*****************************************************************************
+ * Function         phNxpNciHal_configure_merge_sak
+ *
+ * Description      This function is called to apply iso_dep sak merge settings
+ *                  as per the config option NAME_NXP_ISO_DEP_MERGE_SAK
+ *
+ * Params           None
+
+ * Returns          NFCSTATUS_FAILED or NFCSTATUS_SUCCESS
+ *
+ *****************************************************************************/
+NFCSTATUS phNxpNciHal_configure_merge_sak() {
+  if (nfcFL.chipType != sn100u) {
+    NXPLOG_NCIHAL_D("%s : Not applicable for chipType %d",
+                                  __func__, nfcFL.chipType);
+    return NFCSTATUS_SUCCESS;
+  }
+  long retlen = 0;
+  phNxpNci_EEPROM_info_t mEEPROM_info = {.request_mode = 0};
+  NXPLOG_NCIHAL_D("Performing ISODEP sak merge settings");
+  uint8_t val = 0;
+
+  if (!GetNxpNumValue(NAME_NXP_ISO_DEP_MERGE_SAK, (void *)&retlen,
+                      sizeof(retlen))) {
+    retlen = 0x01;
+    NXPLOG_NCIHAL_D(
+        "ISO_DEP_MERGE_SAK not found. default shall be enabled : 0x%02lx",
+        retlen);
+  }
+  val = (uint8_t)retlen;
+  mEEPROM_info.buffer = &val;
+  mEEPROM_info.bufflen = sizeof(val);
+  mEEPROM_info.request_type = EEPROM_ISODEP_MERGE_SAK;
+  mEEPROM_info.request_mode = SET_EEPROM_DATA;
+  return request_EEPROM(&mEEPROM_info);
+}
+#if(NXP_EXTNS== TRUE && NXP_SRD == TRUE)
+/******************************************************************************
+ * Function         phNxpNciHal_setSrdtimeout
+ *
+ * Description      This function can be used to set srd SRD Timeout.
+ *
+ * Returns          NFCSTATUS_FAILED or NFCSTATUS_SUCCESS or
+ *                  NFCSTATUS_FEATURE_NOT_SUPPORTED
+ *
+ ******************************************************************************/
+NFCSTATUS phNxpNciHal_setSrdtimeout() {
+  long retlen = 0;
+  uint8_t *buffer = nullptr;
+  long bufflen = 260;
+  static const int NXP_SRD_TIMEOUT_BUF_LEN = 2;
+  static const uint16_t TIMEOUT_MASK = 0xFFFF;
+  static const uint16_t MAX_TIMEOUT_VALUE = 0x0258;
+  uint16_t isValid_timeout;
+  uint8_t timeout_buffer[NXP_SRD_TIMEOUT_BUF_LEN];
+  NFCSTATUS status = NFCSTATUS_FEATURE_NOT_SUPPORTED;
+  phNxpNci_EEPROM_info_t mEEPROM_info = {.request_mode = 0};
+
+  NXPLOG_NCIHAL_D("Performing SRD Timeout settings");
+
+  buffer = (uint8_t *)malloc(bufflen * sizeof(uint8_t));
+  if (NULL == buffer) {
+    return NFCSTATUS_FAILED;
+  }
+  memset(buffer, 0x00, bufflen);
+  if (GetNxpByteArrayValue(NAME_NXP_SRD_TIMEOUT, (char *)buffer, bufflen,
+                           &retlen)) {
+    if (retlen == NXP_SRD_TIMEOUT_BUF_LEN) {
+      isValid_timeout = ((buffer[1] << 8) & TIMEOUT_MASK);
+      isValid_timeout = (isValid_timeout | buffer[0]);
+      if (isValid_timeout > MAX_TIMEOUT_VALUE) {
+        /*if timeout is setting more than 600 sec
+         * than setting to MAX limit 0x0258*/
+        buffer[0] = 0x58;
+        buffer[1] = 0x02;
+      }
+      memcpy(&timeout_buffer, buffer, NXP_SRD_TIMEOUT_BUF_LEN);
+      mEEPROM_info.buffer = timeout_buffer;
+      mEEPROM_info.bufflen = sizeof(timeout_buffer);
+      mEEPROM_info.request_type = EEPROM_SRD_TIMEOUT;
+      mEEPROM_info.request_mode = SET_EEPROM_DATA;
+      status = request_EEPROM(&mEEPROM_info);
+    }
+  }
+  if (buffer != NULL) {
+    free(buffer);
+    buffer = NULL;
+  }
+
+  return status;
+}
+#endif

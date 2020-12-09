@@ -19,7 +19,6 @@
 #include <android-base/file.h>
 #include <android-base/strings.h>
 #include <android-base/parseint.h>
-#include "phTmlNfc_i2c.h"
 #include <cutils/properties.h>
 #include "phNxpNciHal_ext.h"
 #include "phNxpNciHal_utils.h"
@@ -31,13 +30,14 @@
 #include "phNfcCommon.h"
 #include "phNxpNciHal_Adaptation.h"
 #include "phNxpNciHal_extOperations.h"
+#include "NfccTransportFactory.h"
+#include "NfccTransport.h"
 
 using android::base::WriteStringToFile;
 using namespace ::std;
 using namespace ::android::base;
 
 #define TERMINAL_LEN 5
-
 /* HAL_NFC_STATUS_REFUSED sent to restart NFC service */
 #define HAL_NFC_STATUS_RESTART HAL_NFC_STATUS_REFUSED
 
@@ -89,13 +89,12 @@ int property_get_intf(const char *propName, char *valueStr,
   if (propValue.length() > 0) {
     NXPLOG_NCIHAL_D("property_get_intf , key[%s], propValue[%s], length[%zu]",
                     propName, propValue.c_str(), propValue.length());
-    //Add + 1 to length to ensure that valueStr ends with null terminator
-    len = propValue.length() + 1;
-    strlcpy(valueStr, propValue.c_str(), len);
+    len = propValue.length();
+    strlcpy(valueStr, propValue.c_str(), PROPERTY_VALUE_MAX);
   } else {
     if (propValueDefault.length() > 0) {
-      len = propValueDefault.length() + 1;
-      strlcpy(valueStr, propValueDefault.c_str(), len);
+      len = propValueDefault.length();
+      strlcpy(valueStr, propValueDefault.c_str(), PROPERTY_VALUE_MAX);
     }
   }
 
@@ -195,7 +194,13 @@ std::set<string> gNciConfigs = {"NXP_SE_COLD_TEMP_ERROR_DELAY",
                                 "NXP_RDR_REQ_GUARD_TIME",
                                 "OFF_HOST_SIM2_PIPE_ID",
                                 "NXP_ENABLE_DISABLE_LOGS",
-                                "NXP_RDR_DISABLE_ENABLE_LPCD"};
+                                "NXP_RDR_DISABLE_ENABLE_LPCD",
+                                "NXP_SUPPORT_NON_STD_CARD",
+                                "NXP_GET_HW_INFO_LOG",
+                                "NXP_WLC_MODE",
+                                "NXP_T4T_NDEF_NFCEE_AID",
+                                "NXP_NON_STD_CARD_TIMEDIFF",
+                                "NXP_SRD_TIMEOUT"};
 
 /****************************************************************
  * Local Functions
@@ -217,26 +222,24 @@ int phNxpNciHal_ioctlIf(long /* arg */, void* /* p_data */) {
 
   switch (arg) {
   case HAL_ESE_IOCTL_NFC_JCOP_DWNLD:
-
     if (pInpOutData == NULL) {
       NXPLOG_NCIHAL_E("%s : received invalid param", __func__);
-    } else{
-
-      NXPLOG_NCIHAL_D("HAL_ESE_IOCTL_NFC_JCOP_DWNLD Enter value is %d: \n",
-              pInpOutData->inp.data.nxpCmd.p_cmd[0]);
+      break;
     }
+
     if (gpEseAdapt == NULL) {
       gpEseAdapt = &EseAdaptation::GetInstance();
+      if (gpEseAdapt == NULL) {
+        NXPLOG_NCIHAL_E("%s :invalid gpEseAdapt param", __func__);
+        break;
+      }
       gpEseAdapt->Initialize();
     }
-    if (gpEseAdapt != NULL)
-      ret = gpEseAdapt->HalIoctl(HAL_ESE_IOCTL_NFC_JCOP_DWNLD, pInpOutData);
-    if (pInpOutData == NULL) {
-      NXPLOG_NCIHAL_E("%s : received invalid param", __func__);
-    } else{
-       NXPLOG_NCIHAL_D("HAL_NFC_IOCTL_ESE_JCOP_DWNLD Enter value is %d: \n",
-              pInpOutData->inp.data.nxpCmd.p_cmd[0]);
-    }
+
+    NXPLOG_NCIHAL_D("HAL_ESE_IOCTL_NFC_JCOP_DWNLD Enter value is %d: \n",
+                    pInpOutData->inp.data.nxpCmd.p_cmd[0]);
+
+    gpEseAdapt->HalIoctl(HAL_ESE_IOCTL_NFC_JCOP_DWNLD, pInpOutData);
     ret = 0;
     break;
   default:
@@ -412,6 +415,7 @@ static string phNxpNciHal_extractConfig(string &config) {
   stringstream ss(config);
   string line;
   string result;
+  bool apduGate = false;
   while (getline(ss, line)) {
     line = Trim(line);
     if (line.empty())
@@ -428,9 +432,10 @@ static string phNxpNciHal_extractConfig(string &config) {
     string key(Trim(line.substr(0, search)));
     if (!phNxpNciHal_CheckKeyNeeded(key))
       continue;
-    if (key == "NXP_NFC_SE_TERMINAL_NUM") {
+    if (key == "NXP_NFC_SE_TERMINAL_NUM" && !apduGate) {
       line = "NXP_SE_APDU_GATE_SUPPORT=0x01\n";
       result += line;
+      apduGate = true;
       continue;
     }
     string value_string(Trim(line.substr(search + 1, string::npos)));
@@ -440,6 +445,14 @@ static string phNxpNciHal_extractConfig(string &config) {
 
     line = key + "=" + value_string + "\n";
     result += line;
+    if (key == "NXP_GET_HW_INFO_LOG" &&
+        (value_string == "1" || value_string == "0x01")) {
+      if (!apduGate) {
+        line = "NXP_SE_APDU_GATE_SUPPORT=0x01\n";
+        result += line;
+        apduGate = true;
+      }
+    }
   }
 
   return result;
@@ -609,8 +622,6 @@ static string phNxpNciHal_parseBytesString(string in) {
 NFCSTATUS phNxpNciHal_resetEse(uint64_t resetType) {
   NFCSTATUS status = NFCSTATUS_FAILED;
 
-UNUSED(resetType);
-
   if (nxpncihal_ctrl.halStatus == HAL_STATUS_CLOSE) {
     if (NFCSTATUS_SUCCESS != phNxpNciHal_MinOpen()) {
       return NFCSTATUS_FAILED;
@@ -618,7 +629,7 @@ UNUSED(resetType);
   }
 
   CONCURRENCY_LOCK();
-  status = phTmlNfc_ese_reset(gpphTmlNfc_Context->pDevHandle, MODE_ESE_COLD_RESET);
+  status = gpTransportObj->EseReset(gpphTmlNfc_Context->pDevHandle, (EseResetType)resetType);
   CONCURRENCY_UNLOCK();
   if (status != NFCSTATUS_SUCCESS) {
     NXPLOG_NCIHAL_E("EsePowerCycle failed");
@@ -632,7 +643,7 @@ UNUSED(resetType);
 }
 
 /******************************************************************************
- * Function         phNxpNciHal_getNxpTransitConfig
+ * Function         phNxpNciHal_setNxpTransitConfig
  *
  * Description      This function overwrite libnfc-nxpTransit.conf file
  *                  with transitConfValue.
@@ -644,8 +655,9 @@ bool phNxpNciHal_setNxpTransitConfig(char *transitConfValue) {
   bool status = true;
   NXPLOG_NCIHAL_D("%s : Enter", __func__);
   std::string transitConfFileName = "/data/vendor/nfc/libnfc-nxpTransit.conf";
+  long transitConfValueLen = strlen(transitConfValue)+1;
 
-  if (transitConfValue != NULL) {
+  if (transitConfValueLen > 1) {
     if (!WriteStringToFile(transitConfValue, transitConfFileName)) {
       NXPLOG_NCIHAL_E("WriteStringToFile: Failed");
       status = false;
@@ -655,7 +667,7 @@ bool phNxpNciHal_setNxpTransitConfig(char *transitConfValue) {
       NXPLOG_NCIHAL_E("WriteStringToFile: Failed");
       status = false;
     }
-    if (!remove(transitConfFileName.c_str())) {
+    if (remove(transitConfFileName.c_str())) {
       NXPLOG_NCIHAL_E("Unable to remove file");
       status = false;
     }
@@ -667,7 +679,7 @@ bool phNxpNciHal_setNxpTransitConfig(char *transitConfValue) {
 /******************************************************************************
 ** Function         phNxpNciHal_Abort
 **
-** Description      This function shall notify libnfc to restart
+** Description      This function shall be used to trigger the abort in libnfc
 **
 ** Parameters       None
 **
@@ -682,7 +694,7 @@ bool phNxpNciHal_Abort() {
      we need to abort the libnfc , this can be done only by check the p_nfc_stack_cback_backup
      pointer which is assigned before the JCOP download.*/
   if (p_nfc_stack_cback_backup != NULL){
-      (*p_nfc_stack_cback_backup)(HAL_NFC_OPEN_CPLT_EVT, HAL_NFC_STATUS_RESTART);
+    (*p_nfc_stack_cback_backup)(HAL_NFC_OPEN_CPLT_EVT, HAL_NFC_STATUS_RESTART);
   }
   else {
     ret = false;
@@ -710,7 +722,7 @@ int phNxpNciHal_CheckFwRegFlashRequired(uint8_t *fw_update_req,
     status = fpRegRfFwDndl(fw_update_req, rf_update_req, skipEEPROMRead);
   } else {
     status = phDnldNfc_InitImgInfo();
-    NXPLOG_NCIHAL_D("FW version of the libsn100u.so binary = 0x%x", wFwVer);
+    NXPLOG_NCIHAL_D("FW version from the binary(.so/bin) = 0x%x", wFwVer);
     NXPLOG_NCIHAL_D("FW version found on the device = 0x%x", wFwVerRsp);
 
     if (!GetNxpNumValue(NAME_NXP_FLASH_CONFIG, &option,

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2020 NXP Semiconductors
+ * Copyright 2010-2020 NXP
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,8 +108,8 @@ typedef enum {
                                     download mode */
   phTmlNfc_e_EnableNormalMode, /* Hardware setting for normal mode of operation
                                  */
+  phTmlNfc_e_EnableDownloadModeWithVenRst,
   phTmlNfc_e_PowerReset = 5,
-  phTmlNfc_e_SetFwDownloadHdrSize,
 } phTmlNfc_ControlCode_t;     /* Control code for IOCTL call */
 
 /*
@@ -122,6 +122,15 @@ typedef enum {
   phTmlNfc_e_DisableRetrans = 0x01 /*Disable retransmission of Nci packet */
 } phTmlNfc_ConfigRetrans_t;        /* Configuration for Retransmission */
 
+/*nfc state flags*/
+enum nfc_state_flags {
+    /*nfc in unknown state */
+    NFC_STATE_UNKNOWN = 0,
+    /*nfc booted in download mode */
+    NFC_STATE_FW_DWL = 0x1,
+    /*nfc booted in NCI mode */
+    NFC_STATE_NCI = 0x2,
+};
 /*
  * Structure containing details related to read and write operations
  *
@@ -181,6 +190,7 @@ typedef struct phTmlNfc_Context {
                         queue*/
   long    nfc_service_pid; /*NFC Service PID to be used by driver to signal*/
   int platform_type; /*for common(i2c or i3c) mw implementation*/
+  int nfc_state;    /*to get the initial boot state*/
 } phTmlNfc_Context_t;
 
 /*
@@ -246,4 +256,8 @@ void phTmlNfc_ConfigNciPktReTx(phTmlNfc_ConfigRetrans_t eConfig,
                                uint8_t bRetryCount);
 void phTmlNfc_set_fragmentation_enabled(phTmlNfc_i2cfragmentation_t enable);
 phTmlNfc_i2cfragmentation_t phTmlNfc_get_fragmentation_enabled();
+NFCSTATUS phTmlNfc_ConfigTransport();
+void phTmlNfc_EnableFwDnldMode(bool mode);
+bool phTmlNfc_IsFwDnldModeEnabled(void);
+void phTmlNfc_WaitForIRQLow();
 #endif /*  PHTMLNFC_H  */
