@@ -24,6 +24,8 @@
 #include "eSEClientExtns.h"
 #include "phNxpNciHal_IoctlOperations.h"
 
+#include <android/hardware/nfc/1.2/types.h>
+
 /********************* Definitions and structures *****************************/
 #define MAX_RETRY_COUNT 5
 #define NCI_MAX_DATA_LEN 300

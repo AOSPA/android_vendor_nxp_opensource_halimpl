@@ -26,7 +26,7 @@
  * PN544_SET_PWR(1): power on
  * PN544_SET_PWR(2): reset and power on with firmware download enabled
  */
-#define PN544_SET_PWR _IOW(PN544_MAGIC, 0x01, long)
+#define PN544_SET_PWR _IOW(PN544_MAGIC, 0x01, unsigned int)
 /*
  * 1. SPI Request NFCC to enable p61 power, only in param
  *   Only for SPI
@@ -34,13 +34,13 @@
  *   level 0 = Disable power
  * 2. NFC Request the eSE cold reset, only with MODE_ESE_COLD_RESET
  */
-#define ESE_SET_PWR _IOW(PN544_MAGIC, 0x02, long)
+#define ESE_SET_PWR _IOW(PN544_MAGIC, 0x02, unsigned int)
 
 /*
  * SPI or DWP can call this ioctl to get the current
  * power state of P61
  */
-#define ESE_GET_PWR _IOR(PN544_MAGIC, 0x03, long)
+#define ESE_GET_PWR _IOR(PN544_MAGIC, 0x03, unsigned int)
 
 /*
  * get platform interface type(i2c or i3c) for common MW

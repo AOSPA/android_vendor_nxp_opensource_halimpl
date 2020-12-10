@@ -27,7 +27,9 @@ enum NfccResetType : long {
   MODE_ISO_RST,
   MODE_FW_DWND_HIGH,
   MODE_POWER_RESET,
-  MODE_FW_GPIO_LOW
+  MODE_FW_GPIO_LOW,
+  MODE_NFC_ENABLED,
+  MODE_NFC_DISABLED
 };
 
 enum EseResetCallSrc: long {
