@@ -169,6 +169,7 @@ typedef enum
   TARGET_SMP_BENGAL_H                  = 445, /**< SMP_BENGAL_H target */
   TARGET_SM8350                        = 415, /**< SM8350 target */
   TARGET_SM_MANNAR                     = 454, /**< SM_MANNAR target */
+  TARGET_SM_WAIPIO                     = 457, /**< SM_WAIPIO target */
   TARGET_SM_MANNAR_H                   = 472, /**< SM_MANNAR_H target */
   TARGET_SM_CEDROS                     = 450, /**< SM_CEDROS target */
   TARGET_SM_FRASER                     = 476, /**< SM_FRASER target */
@@ -451,6 +452,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_LAGOON:
         case TARGET_SM_LAGOON_H:
         case TARGET_SM8350:
+        case TARGET_SM_WAIPIO:
         case TARGET_SM_MANNAR:
         case TARGET_SM_MANNAR_H:
         case TARGET_SM_CEDROS:
@@ -530,6 +532,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_LAGOON:
         case TARGET_SM_LAGOON_H:
         case TARGET_SM8350:
+        case TARGET_SM_WAIPIO:
         case TARGET_SM_MANNAR:
         case TARGET_SM_MANNAR_H:
         case TARGET_SM_CEDROS:
