@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright 2018-2020 NXP
+ *  Copyright 2018-2021 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -659,12 +659,7 @@ extern tNfc_featureList nfcFL;
             nfcFL.nfccFL._NFCC_FORCE_FW_DOWNLOAD = true;                   \
         }                                                                  \
 }
-#define STRCPY_FW_LIB(str) {                                                \
-  nfcFL._FW_LIB_PATH.clear();                                               \
-  nfcFL._FW_LIB_PATH.append(FW_LIB_ROOT_DIR);                               \
-  nfcFL._FW_LIB_PATH.append(str);                                           \
-  nfcFL._FW_LIB_PATH.append(FW_LIB_EXTENSION);                              \
-}
+
 #define STRCPY_FW_BIN(str) {                                                \
   nfcFL._FW_BIN_PATH.clear();                                               \
   nfcFL._FW_BIN_PATH.append(FW_BIN_ROOT_DIR);                               \

@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright 2020 NXP
+ *  Copyright 2020-2021 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class NfccTransport {
    **
    ** Function         Close
    **
-   ** Description      Closes PN54X device
+   ** Description      Closes NFCC device
    **
    ** Parameters       pDevHandle - device handle
    **
@@ -72,7 +72,7 @@ class NfccTransport {
    **
    ** Function         OpenAndConfigure
    **
-   ** Description      Open and configure PN54X device and transport layer
+   ** Description      Open and configure NFCC device and transport layer
    **
    ** Parameters       pConfig     - hardware information
    **                  pLinkHandle - device handle
@@ -89,7 +89,7 @@ class NfccTransport {
    **
    ** Function         Read
    **
-   ** Description      Reads requested number of bytes from PN54X device into
+   ** Description      Reads requested number of bytes from NFCC device into
    **                 given buffer
    **
    ** Parameters       pDevHandle       - valid device handle
@@ -107,7 +107,7 @@ class NfccTransport {
    ** Function         Write
    **
    ** Description      Writes requested number of bytes from given buffer into
-   **                  PN54X device
+   **                  NFCC device
    **
    ** Parameters       pDevHandle       - valid device handle
    **                  pBuffer          - buffer for read data
@@ -125,7 +125,7 @@ class NfccTransport {
    **
    ** Function         Reset
    **
-   ** Description      Reset PN54X device, using VEN pin
+   ** Description      Reset NFCC device, using VEN pin
    **
    ** Parameters       pDevHandle     - valid device handle
    **                  eType          - NfccResetType
@@ -136,19 +136,6 @@ class NfccTransport {
    ****************************************************************************/
   virtual int NfccReset(void *pDevHandle, NfccResetType eType);
 
-  /*****************************************************************************
-  **
-  ** Function         GetNfcState
-  **
-  ** Description      Get NFC state
-  **
-  ** Parameters       pDevHandle     - valid device handle
-  ** Returns           0   - unknown
-  **                   1   - FW DWL
-  **                   2   - NCI
-  **
-  *****************************************************************************/
-  virtual int GetNfcState(void *pDevHandle);
   /*****************************************************************************
    **
    ** Function         EseReset
@@ -178,20 +165,6 @@ class NfccTransport {
    **
    ****************************************************************************/
   virtual int EseGetPower(void *pDevHandle, long level);
-
-  /*****************************************************************************
-   **
-   ** Function         GetPlatform
-   **
-   ** Description      Get platform interface type (i2c or i3c) for common mw
-   **
-   ** Parameters       pDevHandle     - valid device handle
-   **
-   ** Returns           0   - i2c
-   **                   1   - i3c
-   **
-   ****************************************************************************/
-  virtual int GetPlatform(void *pDevHandle);
 
   /*****************************************************************************
    **
