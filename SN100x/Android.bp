@@ -76,11 +76,11 @@ cc_library_shared {
     ],
 
     include_dirs: [
-        "vendor/nxp/opensource/halimpl/SN100x/extns/impl",
+        "vendor/nxp/opensource/halimpl/SN100x/extns/impl/nxpnfc/2.0",
     ],
 
     export_include_dirs: [
-        "extns/impl",
+        "extns/impl/nxpnfc/2.0",
         "halimpl/inc",
         "halimpl/hal",
         "halimpl/utils",
