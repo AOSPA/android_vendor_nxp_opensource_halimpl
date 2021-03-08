@@ -2810,12 +2810,21 @@ std::string phNxpNciHal_getNfcChipId() {
 
   ret = __system_property_get("vendor.qti.nfc.chipid", nq_chipid);
   if(ret <= 0) {
-      NXPLOG_NCIHAL_E("%s: Failure in getting chip-id.", __func__);
-      return SN100_CHIPID;
+    NXPLOG_NCIHAL_E("%s: Failure in getting chip-id.", __func__);
+    __system_property_set("persist.nfc_cfg.config_file_name", "libnfc-nci.conf");
+    return SN100_CHIPID;
   }
   else {
-      NXPLOG_NCIHAL_D("%s: Got vendor.qti.nfc.chipid: %s ", __func__, nq_chipid);
-      return nq_chipid;
+    NXPLOG_NCIHAL_D("%s: Got vendor.qti.nfc.chipid: %s ", __func__, nq_chipid);
+    if ((!strncmp(nq_chipid, SN220_CHIPID, PROPERTY_VALUE_MAX))) {
+      NXPLOG_NCIHAL_D("%s: loading SN220 nci config file", __func__);
+      __system_property_set("persist.nfc_cfg.config_file_name", "libnfc-nci_SN220.conf");
+    }
+    else {
+      NXPLOG_NCIHAL_D("%s: loading default nci config file", __func__);
+      __system_property_set("persist.nfc_cfg.config_file_name", "libnfc-nci.conf");
+    }
+    return nq_chipid;
   }
 }
 

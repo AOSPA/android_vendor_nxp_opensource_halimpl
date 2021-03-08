@@ -42,6 +42,7 @@
 #define SN2XX_ROM_VERSION      0x01
 #define SN2XX_FW_MAJOR_VERSION 0x01
 #define SN100_CHIPID "0xa4"
+#define SN220_CHIPID "0xc1"
 
 /* Uncomment define ENABLE_ESE_CLIENT to
 enable eSE client */
