@@ -36,6 +36,8 @@
 #include <phNxpLog.h>
 #include <string.h>
 #include "phNxpNciHal_utils.h"
+#include <NfccTransportFactory.h>
+#include "phNxpConfig.h"
 
 #define CRC_LEN 2
 #define NORMAL_MODE_HEADER_LEN 3
@@ -45,6 +47,7 @@
 #define FRAGMENTSIZE_MAX PHNFC_I2C_FRAGMENT_SIZE
 extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
 extern phTmlNfc_Context_t* gpphTmlNfc_Context;
+extern spTransport gpTransportObj;
 /*******************************************************************************
 **
 ** Function         Close
@@ -81,6 +84,7 @@ void NfccI2cTransport::Close(void *pDevHandle) {
 NFCSTATUS NfccI2cTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
                                              void **pLinkHandle) {
   int nHandle;
+  unsigned long num = 0;
 
   NXPLOG_TML_D("%s Opening port=%s\n", __func__, pConfig->pDevName);
   /* open port */
@@ -94,6 +98,20 @@ NFCSTATUS NfccI2cTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
   *pLinkHandle = (void *)((intptr_t)nHandle);
   if (0 != sem_init(&mTxRxSemaphore, 0, 1)) {
     NXPLOG_TML_E("%s Failed: reason sem_init : retval %x", __func__, nHandle);
+  }
+
+  (void)gpTransportObj->NfccReset(*pLinkHandle, MODE_NFC_ENABLED);
+
+  if (GetNxpNumValue(NAME_ENABLE_VEN_TOGGLE, &num, sizeof(num))) {
+    NXPLOG_TML_D("ENABLE_VEN_TOGGLE value: %lu", num);
+    if (num == 0) {
+      NXPLOG_TML_D("Not toggling NFC ENABLE PIN");
+    } else {
+      NXPLOG_TML_D("Toggling NFC ENABLE PIN");
+      (void)gpTransportObj->NfccReset(*pLinkHandle, MODE_POWER_OFF);
+      usleep(10 * 1000);
+      (void)gpTransportObj->NfccReset(*pLinkHandle, MODE_POWER_ON);
+    }
   }
   return NFCSTATUS_SUCCESS;
 }
