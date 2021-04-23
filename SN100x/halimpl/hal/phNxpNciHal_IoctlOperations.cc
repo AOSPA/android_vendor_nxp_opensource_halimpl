@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2020 NXP Semiconductors
+ * Copyright 2019-2021 NXP
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -200,7 +200,11 @@ std::set<string> gNciConfigs = {"NXP_SE_COLD_TEMP_ERROR_DELAY",
                                 "NXP_WLC_MODE",
                                 "NXP_T4T_NDEF_NFCEE_AID",
                                 "NXP_NON_STD_CARD_TIMEDIFF",
-                                "NXP_SRD_TIMEOUT"};
+                                "NXP_SRD_TIMEOUT",
+                                "NXP_UICC_ETSI_SUPPORT",
+                                "NXP_MINIMAL_FW_VERSION",
+                                "NXP_P2P_DISC_NTF_TIMEOUT",
+                                "NXP_RESTART_RF_FOR_NFCEE_RECOVERY"};
 
 /****************************************************************
  * Local Functions
@@ -352,8 +356,10 @@ bool phNxpNciHal_setSystemProperty(string key, string value) {
     if (fpPropConfCover != NULL) {
       stat = (fpPropConfCover(cstate, cid) == NFCSTATUS_SUCCESS ) ? true : false;
     }
+  } else if(strcmp(key.c_str(), "nfc.cmd_timeout") == 0){
+    NXPLOG_NCIHAL_E("%s : nci_timeout, sem post", __func__);
+    sem_post(&(nxpncihal_ctrl.syncSpiNfc));
   }
-
   gsystemProperty[key] = value;
   return stat;
 }

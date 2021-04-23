@@ -2,7 +2,7 @@
  * Copyright (c) 2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
- * Copyright 2010-2020 NXP
+ * Copyright 2010-2021 NXP
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -121,9 +121,6 @@ NFCSTATUS phTmlNfc_Init(pphTmlNfc_Config_t pConfig) {
         wInitStatus = PHNFCSTVAL(CID_NFC_TML, NFCSTATUS_INVALID_DEVICE);
         gpphTmlNfc_Context->pDevHandle = NULL;
       } else {
-        gpphTmlNfc_Context->platform_type =
-            gpTransportObj->GetPlatform(gpphTmlNfc_Context->pDevHandle);
-        gpphTmlNfc_Context->nfc_state = NFC_STATE_UNKNOWN;
         gpphTmlNfc_Context->tReadInfo.bEnable = 0;
         gpphTmlNfc_Context->tWriteInfo.bEnable = 0;
         gpphTmlNfc_Context->tReadInfo.bThreadBusy = false;
@@ -936,11 +933,7 @@ NFCSTATUS phTmlNfc_IoCtl(phTmlNfc_ControlCode_t eControlCode) {
 
        {
 #if(NXP_EXTNS == TRUE)
-        if (PLATFORM_IF_I3C == gpphTmlNfc_Context->platform_type) {
-         /* TODO: Remove I3C I/F check once hot-join is enabled
-          */
-          NXPLOG_TML_D(" phTmlNfc_e_ResetDevice do nothing for i3c platfoms");
-        } else if(nfcFL.chipType < sn100u) {
+        if(nfcFL.chipType < sn100u) {
 #endif
            /*Reset PN54X*/
            gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_POWER_ON);
@@ -961,20 +954,16 @@ NFCSTATUS phTmlNfc_IoCtl(phTmlNfc_ControlCode_t eControlCode) {
           read_flag = true;
         }
         gpphTmlNfc_Context->tReadInfo.bEnable = 0;
-        if (PLATFORM_IF_I3C == gpphTmlNfc_Context->platform_type) {
-         /* TODO: Remove I3C I/F check once hot-join is enabled
-          */
-          NXPLOG_TML_D(" phTmlNfc_e_EnableNormalMode do nothing for i3c platfoms");
-        } else if(nfcFL.nfccFL._NFCC_DWNLD_MODE == NFCC_DWNLD_WITH_VEN_RESET) {
+        if(nfcFL.nfccFL._NFCC_DWNLD_MODE == NFCC_DWNLD_WITH_VEN_RESET) {
           NXPLOG_TML_D(" phTmlNfc_e_EnableNormalMode complete with VEN RESET ");
           if(nfcFL.chipType < sn100u ){
             gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_POWER_OFF);
             usleep(10 * 1000);
             gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_POWER_ON);
+            usleep(100 * 1000);
           }else{
             gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_FW_GPIO_LOW);
           }
-          usleep(100 * 1000);
         }
         else if(nfcFL.nfccFL._NFCC_DWNLD_MODE == NFCC_DWNLD_WITH_NCI_CMD) {
           NXPLOG_TML_D(" phTmlNfc_e_EnableNormalMode complete with NCI CMD ");
@@ -993,13 +982,7 @@ NFCSTATUS phTmlNfc_IoCtl(phTmlNfc_ControlCode_t eControlCode) {
       case phTmlNfc_e_EnableDownloadMode: {
         phTmlNfc_ConfigNciPktReTx(phTmlNfc_e_DisableRetrans, 0);
         gpphTmlNfc_Context->tReadInfo.bEnable = 0;
-        gpphTmlNfc_Context->nfc_state = gpTransportObj->GetNfcState(gpphTmlNfc_Context->pDevHandle);
-        if (PLATFORM_IF_I3C == gpphTmlNfc_Context->platform_type &&
-                    gpphTmlNfc_Context->nfc_state == NFC_STATE_FW_DWL) {
-          /* when the NFCC is already in the FW DN or teared state
-           */
-          NXPLOG_TML_D(" phTmlNfc_e_EnableDownloadMode do nothing, already in FW DN state");
-        } else if(nfcFL.nfccFL._NFCC_DWNLD_MODE == NFCC_DWNLD_WITH_VEN_RESET) {
+        if(nfcFL.nfccFL._NFCC_DWNLD_MODE == NFCC_DWNLD_WITH_VEN_RESET) {
             NXPLOG_TML_D(" phTmlNfc_e_EnableDownloadMode complete with VEN RESET ");
             wStatus = gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle,
                                       MODE_FW_DWNLD_WITH_VEN);
@@ -1009,7 +992,6 @@ NFCSTATUS phTmlNfc_IoCtl(phTmlNfc_ControlCode_t eControlCode) {
             wStatus = gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle,
                                       MODE_FW_DWND_HIGH);
         }
-        usleep(100 * 1000);
         gpphTmlNfc_Context->tReadInfo.bEnable = 1;
         sem_post(&gpphTmlNfc_Context->rxSemaphore);
         break;
@@ -1019,7 +1001,6 @@ NFCSTATUS phTmlNfc_IoCtl(phTmlNfc_ControlCode_t eControlCode) {
         gpphTmlNfc_Context->tReadInfo.bEnable = 0;
         NXPLOG_TML_D(" phTmlNfc_e_EnableDownloadModewithVenRst complete with VEN RESET ");
         wStatus = gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_FW_DWNLD_WITH_VEN);
-        usleep(100 * 1000);
         gpphTmlNfc_Context->tReadInfo.bEnable = 1;
         sem_post(&gpphTmlNfc_Context->rxSemaphore);
         break;

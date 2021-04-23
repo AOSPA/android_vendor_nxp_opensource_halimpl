@@ -1,5 +1,5 @@
 /******************************************************************************
- *  Copyright 2020 NXP
+ *  Copyright 2020-2021 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ extern spTransport gpTransportObj;
 **
 ** Function         Close
 **
-** Description      Closes PN54X device
+** Description      Closes NFCC device
 **
 ** Parameters       pDevHandle - device handle
 **
@@ -71,7 +71,7 @@ void NfccI2cTransport::Close(void *pDevHandle) {
 **
 ** Function         OpenAndConfigure
 **
-** Description      Open and configure PN54X device
+** Description      Open and configure NFCC device
 **
 ** Parameters       pConfig     - hardware information
 **                  pLinkHandle - device handle
@@ -85,6 +85,7 @@ NFCSTATUS NfccI2cTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
                                              void **pLinkHandle) {
   int nHandle;
   unsigned long num = 0;
+  NFCSTATUS status = NFCSTATUS_SUCCESS;
 
   NXPLOG_TML_D("%s Opening port=%s\n", __func__, pConfig->pDevName);
   /* open port */
@@ -92,12 +93,13 @@ NFCSTATUS NfccI2cTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
   if (nHandle < 0) {
     NXPLOG_TML_E("_i2c_open() Failed: retval %x", nHandle);
     *pLinkHandle = NULL;
-    return NFCSTATUS_INVALID_DEVICE;
-  }
-
-  *pLinkHandle = (void *)((intptr_t)nHandle);
-  if (0 != sem_init(&mTxRxSemaphore, 0, 1)) {
-    NXPLOG_TML_E("%s Failed: reason sem_init : retval %x", __func__, nHandle);
+    status = NFCSTATUS_INVALID_DEVICE;
+  } else {
+    *pLinkHandle = (void *)((intptr_t)nHandle);
+    if (0 != sem_init(&mTxRxSemaphore, 0, 1)) {
+      NXPLOG_TML_E("%s Failed: reason sem_init : retval %x", __func__, nHandle);
+      status = NFCSTATUS_FAILED;
+    }
   }
 
   (void)gpTransportObj->NfccReset(*pLinkHandle, MODE_NFC_ENABLED);
@@ -113,14 +115,14 @@ NFCSTATUS NfccI2cTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
       (void)gpTransportObj->NfccReset(*pLinkHandle, MODE_POWER_ON);
     }
   }
-  return NFCSTATUS_SUCCESS;
+  return status;
 }
 
 /*******************************************************************************
 **
 ** Function         Flushdata
 **
-** Description      Reads payload of FW rsp from PN54X device into given buffer
+** Description      Reads payload of FW rsp from NFCC device into given buffer
 **
 ** Parameters       pDevHandle - valid device handle
 **                  pBuffer    - buffer for read data
@@ -154,7 +156,7 @@ int NfccI2cTransport::Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead)
 **
 ** Function         Read
 **
-** Description      Reads requested number of bytes from PN54X device into given
+** Description      Reads requested number of bytes from NFCC device into given
 **                  buffer
 **
 ** Parameters       pDevHandle       - valid device handle
@@ -186,7 +188,7 @@ int NfccI2cTransport::Read(void *pDevHandle, uint8_t *pBuffer,
   }
 
   /* Read with 2 second timeout, so that the read thread can be aborted
-     when the PN54X does not respond and we need to switch to FW download
+     when the NFCC does not respond and we need to switch to FW download
      mode. This should be done via a control socket instead. */
   FD_ZERO(&rfds);
   FD_SET((intptr_t)pDevHandle, &rfds);
@@ -275,7 +277,7 @@ int NfccI2cTransport::Read(void *pDevHandle, uint8_t *pBuffer,
 ** Function         Write
 **
 ** Description      Writes requested number of bytes from given buffer into
-**                  PN54X device
+**                  NFCC device
 **
 ** Parameters       pDevHandle       - valid device handle
 **                  pBuffer          - buffer for read data
@@ -337,7 +339,7 @@ int NfccI2cTransport::Write(void *pDevHandle, uint8_t *pBuffer,
 **
 ** Function         Reset
 **
-** Description      Reset PN54X device, using VEN pin
+** Description      Reset NFCC device, using VEN pin
 **
 ** Parameters       pDevHandle     - valid device handle
 **                  eType          - reset level
@@ -354,7 +356,7 @@ int NfccI2cTransport::NfccReset(void *pDevHandle, NfccResetType eType) {
     return -1;
   }
 
-  ret = ioctl((intptr_t)pDevHandle, PN544_SET_PWR, eType);
+  ret = ioctl((intptr_t)pDevHandle, NFC_SET_PWR, eType);
   if (ret < 0) {
     NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
   }
@@ -410,51 +412,6 @@ int NfccI2cTransport::EseGetPower(void *pDevHandle, long level) {
   return ioctl((intptr_t)pDevHandle, ESE_GET_PWR, level);
 }
 
-/*******************************************************************************
-**
-** Function         GetPlatform
-**
-** Description      Get platform interface type (i2c or i3c) for common mw
-**
-** Parameters       pDevHandle     - valid device handle
-**
-** Returns           0   - i2c
-**                   1   - i3c
-**
-*******************************************************************************/
-int NfccI2cTransport::GetPlatform(void *pDevHandle) {
-  int ret = -1;
-  NXPLOG_TML_D("%s ", __func__);
-  if (NULL == pDevHandle) {
-    return -1;
-  }
-  ret = ioctl((intptr_t)pDevHandle, P544_GET_PLATFORM_INTERFACE);
-  NXPLOG_TML_D("%s :platform = %d", __func__, ret);
-  return ret;
-}
-
-/*******************************************************************************
-**
-** Function         GetNfcState
-**
-** Description      Get NFC state
-**
-** Parameters       pDevHandle     - valid device handle
-** Returns           0   - unknown
-**                   1   - FW DWL
-**                   2 	 - NCI
-**
-*******************************************************************************/
-int NfccI2cTransport::GetNfcState(void *pDevHandle) {
-  int ret = NFC_STATE_UNKNOWN;
-  NXPLOG_TML_D("%s ", __func__);
-  if (NULL == pDevHandle) {
-    return ret;
-  }
-  ret = ioctl((intptr_t)pDevHandle, P544_GET_NFC_STATE);
-  NXPLOG_TML_D("%s :nfc state = %d", __func__, ret);
-  return ret;
-}
 /*******************************************************************************
 **
 ** Function         EnableFwDnldMode
@@ -543,7 +500,7 @@ int NfccI2cTransport::GetIrqState(void *pDevHandle) {
 
   NXPLOG_TML_D("%s Enter",__func__);
   if (NULL != pDevHandle) {
-    ret = ioctl((intptr_t)pDevHandle, PN544_GET_IRQ_STATE, 0x00);
+    ret = ioctl((intptr_t)pDevHandle, NFC_GET_IRQ_STATE);
   }
   NXPLOG_TML_D("%s exit: state = %d", __func__, ret);
   return ret;

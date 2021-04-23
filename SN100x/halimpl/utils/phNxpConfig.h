@@ -20,7 +20,7 @@
  *
  *  The original Work has been changed by NXP.
  *
- *  Copyright (C) 2013-2020 NXP
+ *  Copyright (C) 2013-2021 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -185,6 +185,10 @@ extern char Fw_Lib_Path[256];
 #define NAME_NXP_T4T_NDEF_NFCEE_AID "NXP_T4T_NDEF_NFCEE_AID"
 #define NAME_NXP_NON_STD_CARD_TIMEDIFF "NXP_NON_STD_CARD_TIMEDIFF"
 #define NAME_NXP_SRD_TIMEOUT "NXP_SRD_TIMEOUT"
+#define NAME_NXP_UICC_ETSI_SUPPORT "NXP_UICC_ETSI_SUPPORT"
+#define NAME_NXP_MINIMAL_FW_VERSION "NXP_MINIMAL_FW_VERSION"
+#define NAME_NXP_P2P_DISC_NTF_TIMEOUT "NXP_P2P_DISC_NTF_TIMEOUT"
+#define NAME_NXP_RESTART_RF_FOR_NFCEE_RECOVERY "NXP_RESTART_RF_FOR_NFCEE_RECOVERY"
 #endif
 
 /**
