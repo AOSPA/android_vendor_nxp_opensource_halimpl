@@ -210,6 +210,7 @@ extern char Fw_Lib_Path[256];
 #define config_name_qrd_NQ4XX   "libnfc-qrd-NQ4XX.conf"
 #define config_name_qrd_SN100   "libnfc-qrd-SN100.conf"
 #define config_name_qrd_SN100_38_4MHZ   "libnfc-qrd-SN100_38_4MHZ.conf"
+#define config_name_generic_SN220  "libnfc-SN220.conf"
 #define config_name_default     "libnfc-nxp_default.conf"
 
 /**
@@ -260,6 +261,12 @@ extern char Fw_Lib_Path[256];
 
 #define NQ210 "0x48"
 #define NQ220 "0x58"
+
+/**
+ * @brief Defines the SN220 chip type.
+ */
+
+#define SN220_CHIP_ID "0xc1"
 
 /**
  *  @brief Defines whether debugging is enabled or disabled.

@@ -108,6 +108,7 @@ typedef enum
   QRD_TYPE_NQ4XX                         = 0x10, /**< qrd config : for NQ4XX chip */
   MTP_TYPE_SN100                         = 0x11, /**< mtp config : for SN100 chip */
   QRD_TYPE_SN100                         = 0x12, /**< qrd config : for SN100 chip */
+  GENERIC_TYPE_SN220                     = 0x13, /**< generic config : for SN220 chip */
   DEFAULT_CONFIG                         = QRD_TYPE_DEFAULT, /**< default is qrd default config */
   CONFIG_INVALID                         = 0xFF
 } CONFIGIDVALUE;
@@ -153,6 +154,7 @@ typedef enum
   TARGET_SM8350                        = 415, /**< SM8350 target */
   TARGET_SM_MANNAR                     = 454, /**< SM_MANNAR target */
   TARGET_SM_WAIPIO                     = 457, /**< SM_WAIPIO target */
+  TARGET_SM_FILLMORE                   = 506, /**< SM_FILLMORE target */
   TARGET_SM_MANNAR_H                   = 472, /**< SM_MANNAR_H target */
   TARGET_SM_CEDROS                     = 450, /**< SM_CEDROS target */
   TARGET_SM_FRASER                     = 476, /**< SM_FRASER target */
@@ -436,7 +438,6 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_LAGOON:
         case TARGET_SM_LAGOON_H:
         case TARGET_SM8350:
-        case TARGET_SM_WAIPIO:
         case TARGET_SM_MANNAR:
         case TARGET_SM_MANNAR_H:
         case TARGET_SM_CEDROS:
@@ -444,6 +445,18 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SM_KODIAK:
             config_id = QRD_TYPE_SN100;
             strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        case TARGET_SM_WAIPIO:
+        case TARGET_SM_FILLMORE:
+            if (!strncmp(nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
+                // SN220
+                config_id = GENERIC_TYPE_SN220;
+                strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
+            } else {
+                // SN110 or SN100
+                config_id = QRD_TYPE_SN100;
+                strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            }
             break;
         case TARGET_BENGAL:
         case TARGET_SM_BENGAL_H:
@@ -516,7 +529,6 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_LAGOON:
         case TARGET_SM_LAGOON_H:
         case TARGET_SM8350:
-        case TARGET_SM_WAIPIO:
         case TARGET_SM_MANNAR:
         case TARGET_SM_MANNAR_H:
         case TARGET_SM_CEDROS:
@@ -524,6 +536,18 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SM_KODIAK:
             config_id = MTP_TYPE_SN100;
             strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        case TARGET_SM_WAIPIO:
+        case TARGET_SM_FILLMORE:
+            if (!strncmp(nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
+                // SN220
+                config_id = GENERIC_TYPE_SN220;
+                strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
+            } else {
+                // SN110 or SN100
+                config_id = MTP_TYPE_SN100;
+                strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            }
             break;
         case TARGET_BENGAL:
         case TARGET_SM_BENGAL_H:
