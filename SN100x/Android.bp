@@ -91,6 +91,7 @@ cc_library_shared {
         "halimpl/common",
         "halimpl/mifare",
         "halimpl/eseclients_extns/inc",
+        "halimpl/recovery",
     ],
 
     shared_libs: [
