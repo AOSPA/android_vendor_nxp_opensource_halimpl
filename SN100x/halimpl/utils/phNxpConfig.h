@@ -175,7 +175,6 @@ extern char Fw_Lib_Path[256];
 #define NAME_NXP_GUARD_TIMER_VALUE "NXP_GUARD_TIMER_VALUE"
 #define NAME_NXP_PROP_RESET_EMVCO_CMD "NXP_PROP_RESET_EMVCO_CMD"
 #define NAME_NFA_CONFIG_FORMAT "NFA_CONFIG_FORMAT"
-#define NAME_NXP_CORE_PWR_OFF_AUTONOMOUS_ENABLE "NXP_CORE_PWR_OFF_AUTONOMOUS_ENABLE"
 #define NAME_NXP_DISCONNECT_TAG_IN_SCRN_OFF "NXP_DISCONNECT_TAG_IN_SCRN_OFF"
 #define NAME_NXP_ENABLE_DISABLE_LOGS "NXP_ENABLE_DISABLE_LOGS"
 #define NAME_NXP_RDR_DISABLE_ENABLE_LPCD "NXP_RDR_DISABLE_ENABLE_LPCD"
@@ -187,8 +186,10 @@ extern char Fw_Lib_Path[256];
 #define NAME_NXP_SRD_TIMEOUT "NXP_SRD_TIMEOUT"
 #define NAME_NXP_UICC_ETSI_SUPPORT "NXP_UICC_ETSI_SUPPORT"
 #define NAME_NXP_MINIMAL_FW_VERSION "NXP_MINIMAL_FW_VERSION"
+#define NAME_NXP_NFCC_RECOVERY_SUPPORT "NXP_NFCC_RECOVERY_SUPPORT"
 #define NAME_NXP_P2P_DISC_NTF_TIMEOUT "NXP_P2P_DISC_NTF_TIMEOUT"
 #define NAME_NXP_RESTART_RF_FOR_NFCEE_RECOVERY "NXP_RESTART_RF_FOR_NFCEE_RECOVERY"
+#define NAME_NXP_PRESENCE_CHECK_TIMEOUT "NXP_PRESENCE_CHECK_TIMEOUT"
 #endif
 
 /**
@@ -209,6 +210,7 @@ extern char Fw_Lib_Path[256];
 #define config_name_qrd_NQ4XX   "libnfc-qrd-NQ4XX.conf"
 #define config_name_qrd_SN100   "libnfc-qrd-SN100.conf"
 #define config_name_qrd_SN100_38_4MHZ   "libnfc-qrd-SN100_38_4MHZ.conf"
+#define config_name_generic_SN220  "libnfc-SN220.conf"
 #define config_name_default     "libnfc-nxp_default.conf"
 
 /**
@@ -259,6 +261,12 @@ extern char Fw_Lib_Path[256];
 
 #define NQ210 "0x48"
 #define NQ220 "0x58"
+
+/**
+ * @brief Defines the SN220 chip type.
+ */
+
+#define SN220_CHIP_ID "0xc1"
 
 /**
  *  @brief Defines whether debugging is enabled or disabled.
