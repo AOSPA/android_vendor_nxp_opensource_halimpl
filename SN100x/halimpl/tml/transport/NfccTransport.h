@@ -201,7 +201,7 @@ class NfccTransport {
   ** Returns          True(Success)/False(Fail)
   **
   *******************************************************************************/
-  virtual bool Flushdata(phTmlNfc_Config_t pConfig);
+  virtual bool Flushdata(pphTmlNfc_Config_t pConfig);
 
   /*****************************************************************************
    **

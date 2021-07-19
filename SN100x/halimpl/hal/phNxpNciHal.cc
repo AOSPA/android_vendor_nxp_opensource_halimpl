@@ -125,7 +125,7 @@ phNxpNciRfSetting_t phNxpNciRfSet = {false, {0}};
 
 phNxpNciMwEepromArea_t phNxpNciMwEepromArea = {false, {0}};
 
-static bool_t gsIsFirstHalMinOpen = true;
+volatile bool_t gsIsFirstHalMinOpen = true;
 volatile bool_t gsIsFwRecoveryRequired = false;
 
 void *RfFwRegionDnld_handle = NULL;
@@ -764,21 +764,6 @@ int phNxpNciHal_MinOpen (){
     return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
   }
   memset(mGetCfg_info, 0x00, sizeof(phNxpNci_getCfg_info_t));
-
-  /*Configure transport layer for communication*/
-  if (NFCSTATUS_SUCCESS != phTmlNfc_ConfigTransport()) {
-    CONCURRENCY_UNLOCK();
-    return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
-  }
-
-  /*Flush pending read if availble*/
-  if (gsIsFirstHalMinOpen) {
-    if (!gpTransportObj->Flushdata(tTmlConfig)) {
-      NXPLOG_NCIHAL_E("Flushdata Failed");
-      CONCURRENCY_UNLOCK();
-      return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
-    }
-  }
 
   /* Initialize TML layer */
   wConfigStatus = phTmlNfc_Init(&tTmlConfig);

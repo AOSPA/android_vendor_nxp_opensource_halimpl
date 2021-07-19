@@ -229,5 +229,5 @@ class NfccI2cTransport : public NfccTransport {
   ** Returns          True(Success)/False(Fail)
   **
   *******************************************************************************/
-  bool Flushdata(phTmlNfc_Config_t pConfig);
+  bool Flushdata(pphTmlNfc_Config_t pConfig);
 };
