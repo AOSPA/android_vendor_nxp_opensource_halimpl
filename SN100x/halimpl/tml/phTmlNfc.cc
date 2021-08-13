@@ -612,18 +612,8 @@ static void * phTmlNfc_TmlWriterThread(void* pParam) {
 **
 *******************************************************************************/
 void phTmlNfc_CleanUp(void) {
-  unsigned long num = 0;
   if (NULL == gpphTmlNfc_Context) {
     return;
-  }
-  if (NULL != gpphTmlNfc_Context->pDevHandle) {
-      if (GetNxpNumValue(NAME_ENABLE_VEN_TOGGLE, &num, sizeof(num))) {
-          if (num == 1) {
-              (void)gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_POWER_OFF);
-          }
-      }
-    (void)gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_NFC_DISABLED);
-    gpphTmlNfc_Context->bThreadDone = 0;
   }
   sem_destroy(&gpphTmlNfc_Context->rxSemaphore);
   sem_destroy(&gpphTmlNfc_Context->txSemaphore);
@@ -631,7 +621,6 @@ void phTmlNfc_CleanUp(void) {
   pthread_mutex_destroy(&gpphTmlNfc_Context->wait_busy_lock);
   pthread_cond_destroy(&gpphTmlNfc_Context->wait_busy_condition);
   gpTransportObj = NULL;
-  gpphTmlNfc_Context->pDevHandle = NULL;
   /* Clear memory allocated for storing Context variables */
   free((void*)gpphTmlNfc_Context);
   /* Set the pointer to NULL to indicate De-Initialization */
@@ -658,6 +647,7 @@ void phTmlNfc_CleanUp(void) {
 *******************************************************************************/
 NFCSTATUS phTmlNfc_Shutdown(void) {
   NFCSTATUS wShutdownStatus = NFCSTATUS_SUCCESS;
+  unsigned long num = 0;
 
   /* Check whether TML is Initialized */
   if (NULL != gpphTmlNfc_Context) {
@@ -674,7 +664,17 @@ NFCSTATUS phTmlNfc_Shutdown(void) {
     sem_post(&gpphTmlNfc_Context->postMsgSemaphore);
     usleep(1000);
 
+    if (NULL != gpphTmlNfc_Context->pDevHandle) {
+      if (GetNxpNumValue(NAME_ENABLE_VEN_TOGGLE, &num, sizeof(num))) {
+        if (num == 1) {
+          (void)gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_POWER_OFF);
+        }
+      }
+      (void)gpTransportObj->NfccReset(gpphTmlNfc_Context->pDevHandle, MODE_NFC_DISABLED);
+    }
+
     gpTransportObj->Close(gpphTmlNfc_Context->pDevHandle);
+    gpphTmlNfc_Context->pDevHandle = NULL;
     if (0 != pthread_join(gpphTmlNfc_Context->readerThread, (void**)NULL)) {
       NXPLOG_TML_E("Fail to kill reader thread!");
     }
