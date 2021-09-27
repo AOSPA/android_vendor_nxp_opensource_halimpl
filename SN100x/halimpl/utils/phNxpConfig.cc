@@ -45,6 +45,8 @@
 #include <cutils/properties.h>
 #include <errno.h>
 #include "sparse_crc32.h"
+#include "phNqChipInfo.h"
+
 #if GENERIC_TARGET
 const char alternative_config_path[] = "/data/vendor/nfc/";
 #else
@@ -120,45 +122,8 @@ typedef enum
 typedef enum
 {
   TARGET_GENERIC                       = 0x00,/**< new targets */
-  TARGET_MSM8952                       = 264, /**< 8952 target */
-  TARGET_MSM8976                       = 278, /**< 8976 target */
-  TARGET_MSM8937                       = 294, /**< 8937 target */
-  TARGET_MSM8953                       = 293, /**< 8953 target */
-  TARGET_MSM8996                       = 246, /**< 8996 target*/
-  TARGET_MSM8909                       = 245, /**< 8909w target */
-  TARGET_MSM8998                       = 292, /**< 8998 target */
-  TARGET_MSM8997                       = 306, /**< 8997 target */
-  TARGET_MSM8917                       = 303, /**< 8917 target */
-  TARGET_MSM8940                       = 313, /**< 8940 target */
-  TARGET_SDM660                        = 317, /**< SDM660 target */
-  TARGET_SDM670                        = 336, /**< SDM670 target */
-  TARGET_SM6150                        = 355, /**< SM6150 target */
-  TARGET_SM6250                        = 407, /**< SM6250 target */
-  TARGET_SM7150                        = 365, /**< SM7150 target */
-  TARGET_SDM630                        = 318, /**< SDM630 target */
-  TARGET_SDM845                        = 321, /**< SDM845 target */
-  TARGET_SM8150                        = 339, /**< SM8150 target */
-  TARGET_SM8150_SDx55                  = 361, /**< SM8150_SDx55 target */
-  TARGET_SM8250                        = 356, /**< SM8250 target */
-  TARGET_SM7250                        = 400, /**< SM7250 target */
-  TARGET_SM7250_M                      = 440, /**< SM7250_M target */
-  TARGET_SM6125                        = 394, /**< SM6125 target */
-  TARGET_SM6125_QCM                    = 467, /**< QCM6125 target */
-  TARGET_SM6125_QCS                    = 468, /**< QCS6125 target */
-  TARGET_LAGOON                        = 434, /**< LAGOON target */
-  TARGET_SM_LAGOON_H                   = 459, /**< SM_LAGOON_H target */
-  TARGET_SCUBA                         = 441, /**< SCUBA  target */
-  TARGET_BENGAL                        = 417, /**< BENGAL target */
-  TARGET_SM_BENGAL_H                   = 444, /**< SM_BENGAL_H target */
-  TARGET_SMP_BENGAL_H                  = 445, /**< SMP_BENGAL_H target */
-  TARGET_SM8350                        = 415, /**< SM8350 target */
-  TARGET_SM_MANNAR                     = 454, /**< SM_MANNAR target */
   TARGET_SM_WAIPIO                     = 457, /**< SM_WAIPIO target */
   TARGET_SM_FILLMORE                   = 506, /**< SM_FILLMORE target */
-  TARGET_SM_MANNAR_H                   = 472, /**< SM_MANNAR_H target */
-  TARGET_SM_CEDROS                     = 450, /**< SM_CEDROS target */
-  TARGET_SM_FRASER                     = 476, /**< SM_FRASER target */
-  TARGET_SM_KODIAK                     = 475, /**< SM_KODIAK target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
 } TARGETTYPE;
@@ -348,11 +313,10 @@ int CNfcConfig::getconfiguration_id (char * config_file)
     int config_id = QRD_TYPE_DEFAULT;
     char target_type[MAX_SOC_INFO_NAME_LEN] = {'\0'};
     char soc_info[MAX_SOC_INFO_NAME_LEN] = {'\0'};
-    char nq_chipid[PROPERTY_VALUE_MAX] = {0};
-    char nq_fw_ver[PROPERTY_VALUE_MAX] = {0};
     string strPath;
     int rc = 0;
     int idx = 0;
+    chip_info_t nq_chip_info;
 
     rc = get_soc_info(soc_info, SYSFS_SOCID_PATH1, SYSFS_SOCID_PATH2);
     if (rc < 0) {
@@ -367,17 +331,10 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         return DEFAULT_CONFIG;
     }
 
-    rc = __system_property_get("vendor.qti.nfc.chipid", nq_chipid);
-    if (rc <= 0)
-        ALOGE("get vendor.qti.nfc.chipid fail, rc = %d\n", rc);
-    else
-        ALOGD("vendor.qti.nfc.chipid = %s\n", nq_chipid);
-
-    rc = __system_property_get("vendor.qti.nfc.fwver", nq_fw_ver);
-    if (rc <= 0)
-        ALOGE("get vendor.qti.nfc.fwver fail, rc = %d\n", rc);
-    else
-        ALOGD("vendor.qti.nfc.fwver = %s\n", nq_fw_ver);
+    rc = get_chip_info(&nq_chip_info);
+    if (rc) {
+        ALOGE("get_chip_info() fail!\n");
+    }
 
     // Converting the HW_PLATFORM detail that is read from target to lowercase
     for (int i=0;target_type[i];i++)
@@ -401,54 +358,9 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_GENERIC:
             config_id = CONFIG_GENERIC;
             break;
-        case TARGET_MSM8952:
-        case TARGET_MSM8909:
-            config_id = QRD_TYPE_DEFAULT;
-            strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
-            break;
-        case TARGET_MSM8953:
-        case TARGET_MSM8937:
-        case TARGET_MSM8917:
-        case TARGET_MSM8940:
-            if ((!strncmp(nq_chipid, NQ220, PROPERTY_VALUE_MAX)) || (!strncmp(nq_chipid, NQ210, PROPERTY_VALUE_MAX))) {
-                // NQ210 or NQ220
-                config_id = QRD_TYPE_DEFAULT;
-                strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
-            } else {
-                config_id = QRD_TYPE_NQ3XX;
-                strlcpy(config_file, config_name_qrd_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
-            }
-            break;
-        case TARGET_MSM8976:
-        case TARGET_MSM8996:
-            strlcpy(config_file, config_name_qrd1, MAX_DATA_CONFIG_PATH_LEN);
-            config_id = QRD_TYPE_1;
-            break;
-        case TARGET_SM8150:
-        case TARGET_SM6150:
-        case TARGET_SM6250:
-        case TARGET_SM7150:
-        case TARGET_SM8250:
-        case TARGET_SM7250:
-        case TARGET_SM7250_M:
-        case TARGET_SM8150_SDx55:
-        case TARGET_SM6125:
-        case TARGET_SM6125_QCM:
-        case TARGET_SM6125_QCS:
-        case TARGET_LAGOON:
-        case TARGET_SM_LAGOON_H:
-        case TARGET_SM8350:
-        case TARGET_SM_MANNAR:
-        case TARGET_SM_MANNAR_H:
-        case TARGET_SM_CEDROS:
-        case TARGET_SM_FRASER:
-        case TARGET_SM_KODIAK:
-            config_id = QRD_TYPE_SN100;
-            strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
-            break;
         case TARGET_SM_WAIPIO:
         case TARGET_SM_FILLMORE:
-            if (!strncmp(nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
+            if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN220
                 config_id = GENERIC_TYPE_SN220;
                 strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
@@ -456,37 +368,6 @@ int CNfcConfig::getconfiguration_id (char * config_file)
                 // SN110 or SN100
                 config_id = QRD_TYPE_SN100;
                 strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
-            }
-            break;
-        case TARGET_BENGAL:
-        case TARGET_SM_BENGAL_H:
-        case TARGET_SMP_BENGAL_H:
-        case TARGET_SCUBA:
-            config_id = QRD_TYPE_SN100;
-            strlcpy(config_file, config_name_qrd_SN100_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
-            break;
-        case TARGET_SDM845:
-        case TARGET_SDM670:
-            if (!strncmp(nq_fw_ver, FW_MAJOR_NUM_NQ4xx, FW_MAJOR_NUM_LENGTH)) {
-                config_id = QRD_TYPE_NQ4XX;
-                strlcpy(config_file, config_name_qrd_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
-            }
-            else {
-                config_id = QRD_TYPE_NQ3XX;
-                strlcpy(config_file, config_name_qrd_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
-            }
-            break;
-        case TARGET_SDM660:
-        case TARGET_SDM630:
-        case TARGET_MSM8998:
-        case TARGET_MSM8997:
-            if ((!strncmp(nq_chipid, NQ220, PROPERTY_VALUE_MAX)) || (!strncmp(nq_chipid, NQ210, PROPERTY_VALUE_MAX))) {
-                // NQ210 or NQ220
-                config_id = QRD_TYPE_2;
-                strlcpy(config_file, config_name_qrd2, MAX_DATA_CONFIG_PATH_LEN);
-            } else {
-                config_id = QRD_TYPE_NQ3XX;
-                strlcpy(config_file, config_name_qrd_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
             }
             break;
         default:
@@ -502,44 +383,9 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_GENERIC:
             config_id = CONFIG_GENERIC;
             break;
-        case TARGET_MSM8953:
-        case TARGET_MSM8937:
-        case TARGET_MSM8917:
-        case TARGET_MSM8940:
-            if ((!strncmp(nq_chipid, NQ220, PROPERTY_VALUE_MAX)) || (!strncmp(nq_chipid, NQ210, PROPERTY_VALUE_MAX))) {
-                // NQ210 or NQ220
-                config_id = MTP_TYPE_DEFAULT;
-                strlcpy(config_file, config_name_mtp, MAX_DATA_CONFIG_PATH_LEN);
-            } else {
-                config_id = MTP_TYPE_NQ3XX;
-                strlcpy(config_file, config_name_mtp_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
-            }
-            break;
-        case TARGET_SM8150:
-        case TARGET_SM6150:
-        case TARGET_SM6250:
-        case TARGET_SM7150:
-        case TARGET_SM8250:
-        case TARGET_SM7250:
-        case TARGET_SM7250_M:
-        case TARGET_SM8150_SDx55:
-        case TARGET_SM6125:
-        case TARGET_SM6125_QCM:
-        case TARGET_SM6125_QCS:
-        case TARGET_LAGOON:
-        case TARGET_SM_LAGOON_H:
-        case TARGET_SM8350:
-        case TARGET_SM_MANNAR:
-        case TARGET_SM_MANNAR_H:
-        case TARGET_SM_CEDROS:
-        case TARGET_SM_FRASER:
-        case TARGET_SM_KODIAK:
-            config_id = MTP_TYPE_SN100;
-            strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
-            break;
         case TARGET_SM_WAIPIO:
         case TARGET_SM_FILLMORE:
-            if (!strncmp(nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
+            if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN220
                 config_id = GENERIC_TYPE_SN220;
                 strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
@@ -547,37 +393,6 @@ int CNfcConfig::getconfiguration_id (char * config_file)
                 // SN110 or SN100
                 config_id = MTP_TYPE_SN100;
                 strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
-            }
-            break;
-        case TARGET_BENGAL:
-        case TARGET_SM_BENGAL_H:
-        case TARGET_SMP_BENGAL_H:
-        case TARGET_SCUBA:
-            config_id = MTP_TYPE_SN100;
-            strlcpy(config_file, config_name_mtp_SN100_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
-            break;
-        case TARGET_SDM845:
-        case TARGET_SDM670:
-            if (!strncmp(nq_fw_ver, FW_MAJOR_NUM_NQ4xx, FW_MAJOR_NUM_LENGTH)) {
-                config_id = MTP_TYPE_NQ4XX;
-                strlcpy(config_file, config_name_mtp_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
-            }
-            else {
-                config_id = MTP_TYPE_NQ3XX;
-                strlcpy(config_file, config_name_mtp_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
-            }
-            break;
-        case TARGET_SDM660:
-        case TARGET_SDM630:
-        case TARGET_MSM8998:
-        case TARGET_MSM8997:
-            if ((!strncmp(nq_chipid, NQ220, PROPERTY_VALUE_MAX)) || (!strncmp(nq_chipid, NQ210, PROPERTY_VALUE_MAX))) {
-                // NQ210 or NQ220
-                config_id = MTP_TYPE_1;
-                strlcpy(config_file, config_name_mtp1, MAX_DATA_CONFIG_PATH_LEN);
-            } else {
-                config_id = MTP_TYPE_NQ3XX;
-                strlcpy(config_file, config_name_mtp_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
             }
             break;
         default:

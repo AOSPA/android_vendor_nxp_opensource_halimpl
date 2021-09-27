@@ -53,6 +53,7 @@ cc_library_shared {
         "halimpl/tml/transport/*.cc",
         "halimpl/utils/NxpNfcCapability.cc",
         "halimpl/utils/phNxpConfig.cc",
+        "halimpl/utils/phNqChipInfo.cc",
         "halimpl/utils/phNxpNciHal_utils.cc",
         "halimpl/utils/sparse_crc32.cc",
         "halimpl/hal/phNxpNciHal_IoctlOperations.cc",
@@ -112,6 +113,7 @@ cc_library_shared {
 
     header_libs: [
         "libese_client_headers",
+        "device_kernel_headers",
     ],
 
     sanitize: {
