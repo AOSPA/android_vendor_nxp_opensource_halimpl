@@ -124,6 +124,9 @@ typedef enum
   TARGET_GENERIC                       = 0x00,/**< new targets */
   TARGET_SM_WAIPIO                     = 457, /**< SM_WAIPIO target */
   TARGET_SM_FILLMORE                   = 506, /**< SM_FILLMORE target */
+  TARGET_SM_PALIMA                     = 530, /**< SM_PALIMA target */
+  TARGET_SMP_PALIMA                    = 531, /**< SMP_PALIMA target */
+  TARGET_SM_PALIMA_LTE_ONLY            = 540, /**< SM_PALIMA_LTE_ONLY target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
 } TARGETTYPE;
@@ -370,6 +373,13 @@ int CNfcConfig::getconfiguration_id (char * config_file)
                 strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
             }
             break;
+        case TARGET_SM_PALIMA:
+        case TARGET_SMP_PALIMA:
+        case TARGET_SM_PALIMA_LTE_ONLY:
+            // SN110 or SN100
+            config_id = QRD_TYPE_SN100;
+            strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            break;
         default:
             config_id = QRD_TYPE_DEFAULT;
             strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
@@ -394,6 +404,13 @@ int CNfcConfig::getconfiguration_id (char * config_file)
                 config_id = MTP_TYPE_SN100;
                 strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
             }
+            break;
+        case TARGET_SM_PALIMA:
+        case TARGET_SMP_PALIMA:
+        case TARGET_SM_PALIMA_LTE_ONLY:
+            // SN110 or SN100
+            config_id = MTP_TYPE_SN100;
+            strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
             break;
         default:
             config_id = MTP_TYPE_DEFAULT;
