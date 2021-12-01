@@ -27,7 +27,7 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <linux/nfc/nfcinfo.h>
+#include <nfcinfo.h>
 #include <string>
 #include <errno.h>
 #include <sys/types.h>
