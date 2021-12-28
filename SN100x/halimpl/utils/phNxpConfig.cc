@@ -110,7 +110,8 @@ typedef enum
   QRD_TYPE_NQ4XX                         = 0x10, /**< qrd config : for NQ4XX chip */
   MTP_TYPE_SN100                         = 0x11, /**< mtp config : for SN100 chip */
   QRD_TYPE_SN100                         = 0x12, /**< qrd config : for SN100 chip */
-  GENERIC_TYPE_SN220                     = 0x13, /**< generic config : for SN220 chip */
+  GENERIC_19_2_TYPE_SN220                = 0x13, /**< 19.2 MHz clk config : for SN220 chip */
+  GENERIC_38_4_TYPE_SN220                = 0x14, /**< 38.4 MHz clk config : for SN220 chip */
   DEFAULT_CONFIG                         = QRD_TYPE_DEFAULT, /**< default is qrd default config */
   CONFIG_INVALID                         = 0xFF
 } CONFIGIDVALUE;
@@ -122,8 +123,8 @@ typedef enum
 typedef enum
 {
   TARGET_GENERIC                       = 0x00,/**< new targets */
-  TARGET_SM_WAIPIO                     = 457, /**< SM_WAIPIO target */
-  TARGET_SM_FILLMORE                   = 506, /**< SM_FILLMORE target */
+  TARGET_SM_KAILUA                     = 519, /**< SM_KAILUA target */
+  TARGET_SMP_KAILUA                    = 536, /**< SMP_KAILUA target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
 } TARGETTYPE;
@@ -358,17 +359,10 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_GENERIC:
             config_id = CONFIG_GENERIC;
             break;
-        case TARGET_SM_WAIPIO:
-        case TARGET_SM_FILLMORE:
-            if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
-                // SN220
-                config_id = GENERIC_TYPE_SN220;
-                strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
-            } else {
-                // SN110 or SN100
-                config_id = QRD_TYPE_SN100;
-                strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
-            }
+        case TARGET_SM_KAILUA:
+        case TARGET_SMP_KAILUA:
+            config_id = GENERIC_38_4_TYPE_SN220;
+            strlcpy(config_file, config_name_SN220_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
             break;
         default:
             config_id = QRD_TYPE_DEFAULT;
@@ -383,17 +377,10 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_GENERIC:
             config_id = CONFIG_GENERIC;
             break;
-        case TARGET_SM_WAIPIO:
-        case TARGET_SM_FILLMORE:
-            if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
-                // SN220
-                config_id = GENERIC_TYPE_SN220;
-                strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
-            } else {
-                // SN110 or SN100
-                config_id = MTP_TYPE_SN100;
-                strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
-            }
+        case TARGET_SM_KAILUA:
+        case TARGET_SMP_KAILUA:
+            config_id = GENERIC_38_4_TYPE_SN220;
+            strlcpy(config_file, config_name_SN220_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
             break;
         default:
             config_id = MTP_TYPE_DEFAULT;
