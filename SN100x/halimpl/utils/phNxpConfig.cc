@@ -127,6 +127,7 @@ typedef enum
   TARGET_SM_PALIMA                     = 530, /**< SM_PALIMA target */
   TARGET_SMP_PALIMA                    = 531, /**< SMP_PALIMA target */
   TARGET_SM_PALIMA_LTE_ONLY            = 540, /**< SM_PALIMA_LTE_ONLY target */
+  TARGET_SM_ALAKAI                     = 552, /**< SM_ALAKAI target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
 } TARGETTYPE;
@@ -363,6 +364,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
             break;
         case TARGET_SM_WAIPIO:
         case TARGET_SM_FILLMORE:
+        case TARGET_SM_ALAKAI:
             if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN220
                 config_id = GENERIC_TYPE_SN220;
@@ -395,6 +397,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
             break;
         case TARGET_SM_WAIPIO:
         case TARGET_SM_FILLMORE:
+        case TARGET_SM_ALAKAI:
             if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN220
                 config_id = GENERIC_TYPE_SN220;
