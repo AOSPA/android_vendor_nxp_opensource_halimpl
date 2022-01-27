@@ -1,5 +1,5 @@
 # Enable build support for NFC open source vendor modules
-ifeq ($(call is-board-platform-in-list, lahaina holi taro),true)
+ifeq ($(call is-board-platform-in-list, kalama),true)
 TARGET_USES_NQ_NFC := true
 endif
 
