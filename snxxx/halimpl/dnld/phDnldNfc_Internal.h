@@ -24,15 +24,8 @@
 #include <phDnldNfc_Cmd.h>
 #include <phDnldNfc_Status.h>
 
-#define PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE                 \
-  (0x22AU) /* DL Host Frame Buffer Size for all CMD/RSP \
-                except pipelined WRITE
-                Host can be configured to support both 256(0x100) & 554(0x22A)
-                frame size*/
-#if (PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE > PHNFC_I2C_FRAGMENT_SIZE)
-#undef PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE
-#define PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE (PHNFC_I2C_FRAGMENT_SIZE)
-#endif
+#define PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE_SNXXX (0x22AU)
+#define PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE_PN557 (0x100U)
 
 /* DL Host Short Frame Buffer Size for pipelined WRITE RSP */
 #define PHDNLDNFC_WRITERSP_BUFF_SIZE (0x08U)
@@ -55,11 +48,6 @@
 
 #define PHDNLDNFC_MAX_LOG_SIZE \
   ((PHDNLDNFC_EEPROM_LOG_END_ADDR - PHDNLDNFC_EEPROM_LOG_START_ADDR) + 1)
-
-/* DL Max Payload Size */
-#define PHDNLDNFC_CMDRESP_MAX_PLD_SIZE \
-  ((PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE) - \
-   (PHDNLDNFC_FRAME_HDR_LEN + PHDNLDNFC_FRAME_CRC_LEN))
 
 /*
  * Enum definition contains Download Event Types
@@ -132,9 +120,9 @@ typedef enum phDnldNfc_FwFormat {
  */
 typedef struct phDnldNfc_FrameInfo {
   uint16_t dwSendlength; /* length of the payload  */
-  uint8_t
-      aFrameBuff[PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE]; /* Buffer to store command
-                                                      that needs to be sent*/
+  uint8_t aFrameBuff[PHDNLDNFC_CMDRESP_MAX_BUFF_SIZE_SNXXX]; /* Buffer to store
+                                                          command that needs to
+                                                          be sent*/
 } phDnldNfc_FrameInfo_t,
     *pphDnldNfc_FrameInfo_t; /* pointer to #phDnldNfc_FrameInfo_t */
 
@@ -155,7 +143,7 @@ typedef struct phDnldNfc_RspTimerInfo {
   uint32_t dwRspTimerId;     /* Timer for Core to handle response */
   uint8_t TimerStatus;       /* 0 = Timer not running 1 = timer running*/
   NFCSTATUS wTimerExpStatus; /* Holds the status code on timer expiry */
-  uint16_t rspTimeout;      /*FW download rsp timeout value*/
+  uint16_t rspTimeout;       /*FW download rsp timeout value*/
 } phDnldNfc_RspTimerInfo_t;
 
 /*
@@ -186,8 +174,9 @@ typedef struct phDnldNfc_DlContext {
       nxp_nfc_fwp; /* Pointer to firmware version from get_version cmd */
   uint32_t nxp_nfc_fwp_len; /* Length of firmware image length */
   uint32_t nxp_nfc_fw_len;  /* Firmware image length */
-  bool_t bResendLastFrame;  /* Flag to resend the last write frame after MEM_BSY
-                               status */
+  uint16_t nxp_i2c_fragment_len;
+  bool_t bResendLastFrame; /* Flag to resend the last write frame after MEM_BSY
+                              status */
   phDnldNfc_Transition_t
       tDnldInProgress; /* Flag to indicate if download request is ongoing */
   phDnldNfc_Event_t tCurrEvent; /* Current event being processed */
@@ -208,7 +197,7 @@ typedef struct phDnldNfc_DlContext {
       FrameInp; /* input value required for current cmd in process */
   phDnldNfc_RspTimerInfo_t
       TimerInfo;              /* Timer context handled into download context*/
-  phDnldNfc_Buff_t tTKey;     /* Defualt Transport Key provided by caller */
+  phDnldNfc_Buff_t tTKey;     /* Default Transport Key provided by caller */
   phDnldNfc_RWInfo_t tRWInfo; /* Read/Write segmented frame info */
   phDnldNfc_Status_t tLastStatus; /* saved status to distinguish signature or
                                      pltform recovery */

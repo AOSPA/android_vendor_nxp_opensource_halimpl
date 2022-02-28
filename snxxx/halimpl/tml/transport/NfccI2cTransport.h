@@ -42,48 +42,12 @@
  */
 #define ESE_GET_PWR _IOR(NFC_MAGIC, 0x03, unsigned int)
 
-/*
- * get platform interface type(i2c or i3c) for common MW
- * return 0 - i2c, 1 - i3c
- */
-#define NFC_GET_PLATFORM_INTERFACE _IO(NFC_MAGIC, 0x04)
-/*
- * get boot state
- * return unknown, fw dwl, fw teared, nci
- */
-#define NFC_GET_NFC_STATE _IO(NFC_MAGIC, 0x05)
-
 extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
 
 class NfccI2cTransport : public NfccTransport {
  private:
   bool_t bFwDnldFlag = false;
   sem_t mTxRxSemaphore;
-  /*****************************************************************************
-   **
-   ** Function         SemTimedWait
-   **
-   ** Description      Timed sem_wait for avoiding i2c_read & write overlap
-   **
-   ** Parameters       none
-   **
-   ** Returns          Sem_wait return status
-   ****************************************************************************/
-  int SemTimedWait();
-
-  /*****************************************************************************
-   **
-   ** Function         SemPost
-   **
-   ** Description      sem_post 2c_read / write
-   **
-   ** Parameters       none
-   **
-   ** Returns          none
-   ****************************************************************************/
-  void SemPost();
-
-  int Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead);
 
  public:
   /*****************************************************************************
@@ -218,4 +182,17 @@ class NfccI2cTransport : public NfccTransport {
    ** Returns           Current mode download/NCI
    ****************************************************************************/
   bool_t IsFwDnldModeEnabled(void);
+
+  /*******************************************************************************
+  **
+  ** Function         Flushdata
+  **
+  ** Description      Reads payload of FW rsp from NFCC device into given buffer
+  **
+  ** Parameters       pConfig     - hardware information
+  **
+  ** Returns          True(Success)/False(Fail)
+  **
+  *******************************************************************************/
+  bool Flushdata(pphTmlNfc_Config_t pConfig);
 };

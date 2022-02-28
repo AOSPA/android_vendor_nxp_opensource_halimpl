@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  *
- *  Copyright (C) 2015-2019 NXP Semiconductors
+ *  Copyright (C) 2015-2019, 2021 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
  ******************************************************************************/
 #pragma once
 #include <pthread.h>
-
+#include "NxpNfcThreadMutex.h"
 #include "ese_hal_api.h"
 #ifdef ENABLE_ESE_CLIENT
 #include "hal_nxpese.h"
@@ -30,45 +30,6 @@
 #ifdef ENABLE_ESE_CLIENT
 #include <vendor/nxp/nxpese/1.0/INxpEse.h>
 using vendor::nxp::nxpese::V1_0::INxpEse;
-#endif
-
-class ThreadMutex {
- public:
-  ThreadMutex();
-  virtual ~ThreadMutex();
-  void lock();
-  void unlock();
-  operator pthread_mutex_t*() { return &mMutex; }
-
- private:
-  pthread_mutex_t mMutex;
-};
-
-class ThreadCondVar : public ThreadMutex {
- public:
-  ThreadCondVar();
-  virtual ~ThreadCondVar();
-  void signal();
-  void wait();
-  operator pthread_cond_t*() { return &mCondVar; }
-  operator pthread_mutex_t*() {
-    return ThreadMutex::operator pthread_mutex_t*();
-  }
-
- private:
-  pthread_cond_t mCondVar;
-};
-
-class AutoThreadMutex {
- public:
-  AutoThreadMutex(ThreadMutex& m);
-  virtual ~AutoThreadMutex();
-  operator ThreadMutex&() { return mm; }
-  operator pthread_mutex_t*() { return (pthread_mutex_t*)mm; }
-
- private:
-  ThreadMutex& mm;
-};
 
 class EseAdaptation {
  public:
@@ -87,23 +48,23 @@ class EseAdaptation {
   EseAdaptation();
   void signal();
   static EseAdaptation* mpInstance;
-  static ThreadMutex sLock;
-  static ThreadMutex sIoctlLock;
-  ThreadCondVar mCondVar;
+  static NfcHalThreadMutex sLock;
+  static NfcHalThreadMutex sIoctlLock;
+  NfcHalThreadCondVar mCondVar;
   static tHAL_ESE_CBACK* mHalCallback;
   static tHAL_ESE_DATA_CBACK* mHalDataCallback;
-  static ThreadCondVar mHalOpenCompletedEvent;
-  static ThreadCondVar mHalCloseCompletedEvent;
-  static ThreadCondVar mHalIoctlEvent;
+  static NfcHalThreadCondVar mHalOpenCompletedEvent;
+  static NfcHalThreadCondVar mHalCloseCompletedEvent;
+  static NfcHalThreadCondVar mHalIoctlEvent;
   static android::sp<android::hardware::secure_element::V1_0::ISecureElement>
       mHal;
 #ifdef ENABLE_ESE_CLIENT
   static android::sp<vendor::nxp::nxpese::V1_0::INxpEse> mHalNxpEse;
 #endif
 #if (NXP_EXTNS == TRUE)
-  static ThreadCondVar mHalCoreResetCompletedEvent;
-  static ThreadCondVar mHalCoreInitCompletedEvent;
-  static ThreadCondVar mHalInitCompletedEvent;
+  static NfcHalThreadCondVar mHalCoreResetCompletedEvent;
+  static NfcHalThreadCondVar mHalCoreInitCompletedEvent;
+  static NfcHalThreadCondVar mHalInitCompletedEvent;
 #endif
   static uint32_t Thread(uint32_t arg);
   static void HalDeviceContextDataCallback(uint16_t data_len, uint8_t* p_data);
