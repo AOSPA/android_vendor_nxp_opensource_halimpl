@@ -257,6 +257,7 @@ void IoctlCallback(hidl_vec<uint8_t> /* outputData */) {
 **
 *******************************************************************************/
 int EseAdaptation::HalIoctl(long /* arg */, void* /* p_data */) {
+  int ret = -1;
 #ifdef ENABLE_ESE_CLIENT
   const char* func = "EseAdaptation::HalIoctl";
   hidl_vec<uint8_t> data;
@@ -271,4 +272,5 @@ int EseAdaptation::HalIoctl(long /* arg */, void* /* p_data */) {
            (unsigned long)pInpOutData->out.ioctlType);
   return (pInpOutData->out.result);
 #endif
+  return ret;
 }

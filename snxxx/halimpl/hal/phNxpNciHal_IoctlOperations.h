@@ -15,7 +15,6 @@
  */
 
 #include <hardware/nfc.h>
-#include "NxpNfc.h"
 #include "phNfcStatus.h"
 #include "phNxpConfig.h"
 #include "phNxpLog.h"

@@ -30,6 +30,7 @@
 #ifdef ENABLE_ESE_CLIENT
 #include <vendor/nxp/nxpese/1.0/INxpEse.h>
 using vendor::nxp::nxpese::V1_0::INxpEse;
+#endif
 
 class EseAdaptation {
  public:

@@ -17,14 +17,14 @@
 //  The original Work has been changed by NXP.
 //  Copyright (C) 2021-2022 NXP
 
-package {
+//package {
     // See: http://go/android-license-faq
     // A large-scale-change added 'default_applicable_licenses' to import
     // all of the 'license_kinds' from "hardware_nxp_nfc_license"
     // to get the below license kinds:
     //   SPDX-license-identifier-Apache-2.0
-    default_applicable_licenses: ["hardware_nxp_nfc_license"],
-}
+    //default_applicable_licenses: ["hardware_nxp_nfc_license"],
+//}
 
 cc_library_shared {
     name: "nfc_nci.nqx.default.hw",
@@ -71,7 +71,6 @@ cc_library_shared {
         "halimpl/eseclients_extns/src/*.cc",
         "halimpl/hal/phNxpNciHal_IoctlOperations.cc",
         "halimpl/hal/phNxpNciHal_extOperations.cc",
-        "halimpl/eseclients_extns/src/eSEClientExtns.cc",
         "halimpl/mifare/NxpMfcReader.cc",
         "halimpl/recovery/phNxpNciHal_Recovery.cc",
     ],
@@ -94,7 +93,7 @@ cc_library_shared {
     ],
 
     include_dirs: [
-        "vendor/nxp/opensource/halimpl/SN100x/extns/impl/nxpnfc/2.0",
+        "vendor/nxp/opensource/halimpl/snxxx/extns/impl/nxpnfc/2.0",
     ],
 
     export_include_dirs: [
