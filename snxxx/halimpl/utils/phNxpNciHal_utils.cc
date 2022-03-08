@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2013-2021 NXP
+ *  Copyright 2013-2022 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -432,6 +432,8 @@ void phNxpNciHal_releaseall_cb_data(void) {
 *******************************************************************************/
 void phNxpNciHal_print_packet(const char* pString, const uint8_t* p_data,
                               uint16_t len) {
+  if(!nfc_debug_enabled)
+    return; // logging is disabled
   uint32_t i;
 #if (NXP_EXTNS == TRUE)
   char* print_buffer = (char*)calloc((len * 3 + 1), sizeof(char));
@@ -445,9 +447,9 @@ void phNxpNciHal_print_packet(const char* pString, const uint8_t* p_data,
       snprintf(&print_buffer[i * 2], 3, "%02X", p_data[i]);
     }
     if (0 == memcmp(pString, "SEND", 0x04)) {
-      NXPLOG_NCIX_D("len = %3d > %s", len, print_buffer);
+      NXPLOG_NCIX_I("len = %3d > %s", len, print_buffer);
     } else if (0 == memcmp(pString, "RECV", 0x04)) {
-      NXPLOG_NCIR_D("len = %3d > %s", len, print_buffer);
+      NXPLOG_NCIR_I("len = %3d > %s", len, print_buffer);
     } else if (0 == memcmp(pString, "DEBUG", 0x05)) {
       NXPLOG_NCIHAL_D(" Debug Info > len = %3d > %s", len, print_buffer);
     }
