@@ -101,12 +101,13 @@ NFCSTATUS NfccI2cTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
     }
   }
 
-  (void)gpTransportObj->NfccReset(*pLinkHandle, MODE_NFC_ENABLED);
-
   if (GetNxpNumValue(NAME_ENABLE_VEN_TOGGLE, &num, sizeof(num))) {
     NXPLOG_TML_D("ENABLE_VEN_TOGGLE value: %lu", num);
-    if (num == 0) {
-      NXPLOG_TML_D("Not toggling NFC ENABLE PIN");
+    if (num == 0 && bFwDnldFlag) {
+      NXPLOG_TML_D("Not toggling NFC ENABLE PIN and bFwDnldFlag value: %u", bFwDnldFlag);
+    } else if (num == 0 && !bFwDnldFlag) {
+      NXPLOG_TML_D("Not toggling NFC ENABLE PIN and bFwDnldFlag value: %u", bFwDnldFlag);
+      (void)gpTransportObj->NfccReset(*pLinkHandle, MODE_NFC_ENABLED);
     } else {
       NXPLOG_TML_D("Toggling NFC ENABLE PIN");
       (void)gpTransportObj->NfccReset(*pLinkHandle, MODE_POWER_OFF);
