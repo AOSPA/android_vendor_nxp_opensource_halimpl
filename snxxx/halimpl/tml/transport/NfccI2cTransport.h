@@ -26,7 +26,7 @@
  * NFC_SET_PWR(1): power on
  * NFC_SET_PWR(2): reset and power on with firmware download enabled
  */
-#define NFC_SET_PWR _IOW(NFC_MAGIC, 0x01, unsigned int)
+#define NFC_SET_PWR _IOW(NFC_MAGIC, 0x01, uint32_t)
 /*
  * 1. SPI Request NFCC to enable ESE power, only in param
  *   Only for SPI
@@ -34,24 +34,13 @@
  *   level 0 = Disable power
  * 2. NFC Request the eSE cold reset, only with MODE_ESE_COLD_RESET
  */
-#define ESE_SET_PWR _IOW(NFC_MAGIC, 0x02, unsigned int)
+#define ESE_SET_PWR _IOW(NFC_MAGIC, 0x02, uint32_t)
 
 /*
  * SPI or DWP can call this ioctl to get the current
  * power state of ESE
  */
-#define ESE_GET_PWR _IOR(NFC_MAGIC, 0x03, unsigned int)
-
-/*
- * get platform interface type(i2c or i3c) for common MW
- * return 0 - i2c, 1 - i3c
- */
-#define NFC_GET_PLATFORM_INTERFACE _IO(NFC_MAGIC, 0x04)
-/*
- * get boot state
- * return unknown, fw dwl, fw teared, nci
- */
-#define NFC_GET_NFC_STATE _IO(NFC_MAGIC, 0x05)
+#define ESE_GET_PWR _IOR(NFC_MAGIC, 0x03, uint32_t)
 
 extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
 
@@ -59,31 +48,6 @@ class NfccI2cTransport : public NfccTransport {
  private:
   bool_t bFwDnldFlag = false;
   sem_t mTxRxSemaphore;
-  /*****************************************************************************
-   **
-   ** Function         SemTimedWait
-   **
-   ** Description      Timed sem_wait for avoiding i2c_read & write overlap
-   **
-   ** Parameters       none
-   **
-   ** Returns          Sem_wait return status
-   ****************************************************************************/
-  int SemTimedWait();
-
-  /*****************************************************************************
-   **
-   ** Function         SemPost
-   **
-   ** Description      sem_post 2c_read / write
-   **
-   ** Parameters       none
-   **
-   ** Returns          none
-   ****************************************************************************/
-  void SemPost();
-
-  int Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead);
 
  public:
   /*****************************************************************************
@@ -193,7 +157,7 @@ class NfccI2cTransport : public NfccTransport {
    **                  else - reset operation failure
    **
    ****************************************************************************/
-  int EseGetPower(void *pDevHandle, long level);
+  int EseGetPower(void *pDevHandle, uint32_t level);
 
   /*****************************************************************************
    **
@@ -218,4 +182,17 @@ class NfccI2cTransport : public NfccTransport {
    ** Returns           Current mode download/NCI
    ****************************************************************************/
   bool_t IsFwDnldModeEnabled(void);
+
+  /*******************************************************************************
+  **
+  ** Function         Flushdata
+  **
+  ** Description      Reads payload of FW rsp from NFCC device into given buffer
+  **
+  ** Parameters       pConfig     - hardware information
+  **
+  ** Returns          True(Success)/False(Fail)
+  **
+  *******************************************************************************/
+  bool Flushdata(pphTmlNfc_Config_t pConfig);
 };

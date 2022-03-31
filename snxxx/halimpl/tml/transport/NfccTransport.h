@@ -20,7 +20,7 @@
 #include <phNfcTypes.h>
 #include <phTmlNfc.h>
 
-enum NfccResetType : long {
+enum NfccResetType : uint32_t {
   MODE_POWER_OFF = 0x00,
   MODE_POWER_ON,
   MODE_FW_DWNLD_WITH_VEN,
@@ -32,12 +32,12 @@ enum NfccResetType : long {
   MODE_NFC_DISABLED
 };
 
-enum EseResetCallSrc: long {
+enum EseResetCallSrc : uint32_t {
   SRC_SPI = 0x0,
   SRC_NFC = 0x10,
 };
 
-enum EseResetType : long {
+enum EseResetType : uint32_t {
   MODE_ESE_POWER_ON = 0,
   MODE_ESE_POWER_OFF,
   MODE_ESE_POWER_STATE,
@@ -47,8 +47,10 @@ enum EseResetType : long {
   MODE_ESE_RESET_PROTECTION_DISABLE,
   /*Request from NFC HAL/Service*/
   MODE_ESE_COLD_RESET_NFC = MODE_ESE_COLD_RESET | SRC_NFC,
-  MODE_ESE_RESET_PROTECTION_ENABLE_NFC = MODE_ESE_RESET_PROTECTION_ENABLE | SRC_NFC,
-  MODE_ESE_RESET_PROTECTION_DISABLE_NFC = MODE_ESE_RESET_PROTECTION_DISABLE | SRC_NFC,
+  MODE_ESE_RESET_PROTECTION_ENABLE_NFC =
+      MODE_ESE_RESET_PROTECTION_ENABLE | SRC_NFC,
+  MODE_ESE_RESET_PROTECTION_DISABLE_NFC =
+      MODE_ESE_RESET_PROTECTION_DISABLE | SRC_NFC,
 };
 
 extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
@@ -66,7 +68,7 @@ class NfccTransport {
    ** Returns          None
    **
    *****************************************************************************/
-  virtual void Close(void *pDevHandle) = 0;
+  virtual void Close(void* pDevHandle) = 0;
 
   /*****************************************************************************
    **
@@ -83,7 +85,7 @@ class NfccTransport {
    **
    ****************************************************************************/
   virtual NFCSTATUS OpenAndConfigure(pphTmlNfc_Config_t pConfig,
-                                     void **pLinkHandle) = 0;
+                                     void** pLinkHandle) = 0;
 
   /*****************************************************************************
    **
@@ -100,7 +102,7 @@ class NfccTransport {
    **                  -1        - read operation failure
    **
    ****************************************************************************/
-  virtual int Read(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToRead) = 0;
+  virtual int Read(void* pDevHandle, uint8_t* pBuffer, int nNbBytesToRead) = 0;
 
   /*****************************************************************************
    **
@@ -118,7 +120,7 @@ class NfccTransport {
    **                  -1         - write operation failure
    **
    *****************************************************************************/
-  virtual int Write(void *pDevHandle, uint8_t *pBuffer,
+  virtual int Write(void* pDevHandle, uint8_t* pBuffer,
                     int nNbBytesToWrite) = 0;
 
   /*****************************************************************************
@@ -134,7 +136,7 @@ class NfccTransport {
    **                  -1   - reset operation failure
    **
    ****************************************************************************/
-  virtual int NfccReset(void *pDevHandle, NfccResetType eType);
+  virtual int NfccReset(void* pDevHandle, NfccResetType eType);
 
   /*****************************************************************************
    **
@@ -149,7 +151,7 @@ class NfccTransport {
    **                  else - reset operation failure
    **
    ****************************************************************************/
-  virtual int EseReset(void *pDevHandle, EseResetType eType);
+  virtual int EseReset(void* pDevHandle, EseResetType eType);
 
   /*****************************************************************************
    **
@@ -164,7 +166,7 @@ class NfccTransport {
    **                  else - reset operation failure
    **
    ****************************************************************************/
-  virtual int EseGetPower(void *pDevHandle, long level);
+  virtual int EseGetPower(void* pDevHandle, uint32_t level);
 
   /*****************************************************************************
    **
@@ -189,6 +191,19 @@ class NfccTransport {
    ** Returns          Current mode download/NCI
    ****************************************************************************/
   virtual bool_t IsFwDnldModeEnabled(void);
+
+  /*******************************************************************************
+  **
+  ** Function         Flushdata
+  **
+  ** Description      Reads payload of FW rsp from NFCC device into given buffer
+  **
+  ** Parameters       pConfig     - hardware information
+  **
+  ** Returns          True(Success)/False(Fail)
+  **
+  *******************************************************************************/
+  virtual bool Flushdata(pphTmlNfc_Config_t pConfig);
 
   /*****************************************************************************
    **

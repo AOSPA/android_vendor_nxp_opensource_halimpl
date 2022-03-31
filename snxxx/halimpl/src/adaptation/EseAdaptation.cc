@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  *
- *  Copyright (C) 2015-2020 NXP Semiconductors
+ *  Copyright 2015-2022 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,12 +17,11 @@
  *
  ******************************************************************************/
 #define LOG_TAG "EseAdaptation"
+#include "EseAdaptation.h"
 #include <android/hardware/secure_element/1.0/ISecureElement.h>
 #include <android/hardware/secure_element/1.0/ISecureElementHalCallback.h>
 #include <android/hardware/secure_element/1.0/types.h>
 #include <hwbinder/ProcessState.h>
-#include <pthread.h>
-#include "EseAdaptation.h"
 #include <log/log.h>
 
 using android::hardware::Return;
@@ -44,21 +43,21 @@ extern "C" void verify_stack_non_volatile_store();
 extern "C" void delete_stack_non_volatile_store(bool forceDelete);
 
 EseAdaptation* EseAdaptation::mpInstance = NULL;
-ThreadMutex EseAdaptation::sLock;
-ThreadMutex EseAdaptation::sIoctlLock;
+NfcHalThreadMutex EseAdaptation::sLock;
+NfcHalThreadMutex EseAdaptation::sIoctlLock;
 #ifdef ENABLE_ESE_CLIENT
 sp<INxpEse> EseAdaptation::mHalNxpEse;
 #endif
 sp<ISecureElement> EseAdaptation::mHal;
 tHAL_ESE_CBACK* EseAdaptation::mHalCallback = NULL;
 tHAL_ESE_DATA_CBACK* EseAdaptation::mHalDataCallback = NULL;
-ThreadCondVar EseAdaptation::mHalOpenCompletedEvent;
-ThreadCondVar EseAdaptation::mHalCloseCompletedEvent;
+NfcHalThreadCondVar EseAdaptation::mHalOpenCompletedEvent;
+NfcHalThreadCondVar EseAdaptation::mHalCloseCompletedEvent;
 
-#if(NXP_EXTNS == TRUE)
-ThreadCondVar EseAdaptation::mHalCoreResetCompletedEvent;
-ThreadCondVar EseAdaptation::mHalCoreInitCompletedEvent;
-ThreadCondVar EseAdaptation::mHalInitCompletedEvent;
+#if (NXP_EXTNS == TRUE)
+NfcHalThreadCondVar EseAdaptation::mHalCoreResetCompletedEvent;
+NfcHalThreadCondVar EseAdaptation::mHalCoreInitCompletedEvent;
+NfcHalThreadCondVar EseAdaptation::mHalInitCompletedEvent;
 #endif
 #define SIGNAL_NONE 0
 #define SIGNAL_SIGNALED 1
@@ -100,7 +99,7 @@ EseAdaptation::~EseAdaptation() { mpInstance = NULL; }
 **
 *******************************************************************************/
 EseAdaptation& EseAdaptation::GetInstance() {
-  AutoThreadMutex a(sLock);
+  NfcHalAutoThreadMutex a(sLock);
 
   if (!mpInstance) mpInstance = new EseAdaptation;
   return *mpInstance;
@@ -147,11 +146,10 @@ void EseAdaptation::signal() { mCondVar.signal(); }
 ** Returns:     none
 **
 *******************************************************************************/
-uint32_t EseAdaptation::Thread(uint32_t arg) {
+uint32_t EseAdaptation::Thread() {
   const char* func = "EseAdaptation::Thread";
   ALOGD_IF(nfc_debug_enabled, "%s: enter", func);
-  arg = 0;
-  { ThreadCondVar CondVar; }
+  { NfcHalThreadCondVar CondVar; }
 
   EseAdaptation::GetInstance().signal();
 
@@ -189,8 +187,9 @@ void EseAdaptation::InitializeHalDeviceContext() {
   ALOGD_IF(nfc_debug_enabled, "%s: INxpEse::tryGetService()", func);
 #ifdef ENABLE_ESE_CLIENT
   mHalNxpEse = INxpEse::tryGetService();
-  ALOGD_IF(mHalNxpEse == nullptr, "%s: Failed to retrieve the NXP ESE HAL!", func);
-  if(mHalNxpEse != nullptr) {
+  ALOGD_IF(mHalNxpEse == nullptr, "%s: Failed to retrieve the NXP ESE HAL!",
+           func);
+  if (mHalNxpEse != nullptr) {
     ALOGD_IF(nfc_debug_enabled, "%s: INxpEse::getService() returned %p (%s)",
              func, mHalNxpEse.get(),
              (mHalNxpEse->isRemote() ? "remote" : "local"));
@@ -233,7 +232,7 @@ void IoctlCallback(hidl_vec<uint8_t> /* outputData */) {
       (ese_nxp_ExtnOutputData_t*)&outputData[0];
   ALOGD_IF(nfc_debug_enabled, "%s Ioctl Type=%lu", func,
            (unsigned long)pOutData->ioctlType);
-  EseAdaptation* pAdaptation =  &EseAdaptation::GetInstance();
+  EseAdaptation* pAdaptation = &EseAdaptation::GetInstance();
   /*Output Data from stub->Proxy is copied back to output data
    * This data will be sent back to libese*/
   memcpy(&pAdaptation->mCurrentIoctlData->out, &outputData[0],
@@ -246,9 +245,9 @@ void IoctlCallback(hidl_vec<uint8_t> /* outputData */) {
 **
 ** Description: Calls ioctl to the Ese driver.
 **              If called with a arg value of 0x01 than wired access requested,
-**              status of the requst would be updated to p_data.
+**              status of the request would be updated to p_data.
 **              If called with a arg value of 0x00 than wired access will be
-**              released, status of the requst would be updated to p_data.
+**              released, status of the request would be updated to p_data.
 **              If called with a arg value of 0x02 than current p61 state would
 *be
 **              updated to p_data.
@@ -261,7 +260,7 @@ int EseAdaptation::HalIoctl(long /* arg */, void* /* p_data */) {
 #ifdef ENABLE_ESE_CLIENT
   const char* func = "EseAdaptation::HalIoctl";
   hidl_vec<uint8_t> data;
-  AutoThreadMutex a(sIoctlLock);
+  NfcHalAutoThreadMutex a(sIoctlLock);
   ese_nxp_IoctlInOutData_t* pInpOutData = (ese_nxp_IoctlInOutData_t*)p_data;
   ALOGD_IF(nfc_debug_enabled, "%s arg=%ld", func, arg);
 
@@ -270,136 +269,7 @@ int EseAdaptation::HalIoctl(long /* arg */, void* /* p_data */) {
   if (mHalNxpEse != nullptr) mHalNxpEse->ioctl(arg, data, IoctlCallback);
   ALOGD_IF(nfc_debug_enabled, "%s Ioctl Completed for Type=%lu", func,
            (unsigned long)pInpOutData->out.ioctlType);
-  ret = (pInpOutData->out.result);
+  return (pInpOutData->out.result);
 #endif
   return ret;
 }
-
-/*******************************************************************************
-**
-** Function:    ThreadMutex::ThreadMutex()
-**
-** Description: class constructor
-**
-** Returns:     none
-**
-*******************************************************************************/
-ThreadMutex::ThreadMutex() {
-  pthread_mutexattr_t mutexAttr;
-
-  pthread_mutexattr_init(&mutexAttr);
-  pthread_mutex_init(&mMutex, &mutexAttr);
-  pthread_mutexattr_destroy(&mutexAttr);
-}
-
-/*******************************************************************************
-**
-** Function:    ThreadMutex::~ThreadMutex()
-**
-** Description: class destructor
-**
-** Returns:     none
-**
-*******************************************************************************/
-ThreadMutex::~ThreadMutex() { pthread_mutex_destroy(&mMutex); }
-
-/*******************************************************************************
-**
-** Function:    ThreadMutex::lock()
-**
-** Description: lock kthe mutex
-**
-** Returns:     none
-**
-*******************************************************************************/
-void ThreadMutex::lock() { pthread_mutex_lock(&mMutex); }
-
-/*******************************************************************************
-**
-** Function:    ThreadMutex::unblock()
-**
-** Description: unlock the mutex
-**
-** Returns:     none
-**
-*******************************************************************************/
-void ThreadMutex::unlock() { pthread_mutex_unlock(&mMutex); }
-
-/*******************************************************************************
-**
-** Function:    ThreadCondVar::ThreadCondVar()
-**
-** Description: class constructor
-**
-** Returns:     none
-**
-*******************************************************************************/
-ThreadCondVar::ThreadCondVar() {
-  pthread_condattr_t CondAttr;
-
-  pthread_condattr_init(&CondAttr);
-  pthread_cond_init(&mCondVar, &CondAttr);
-
-  pthread_condattr_destroy(&CondAttr);
-}
-
-/*******************************************************************************
-**
-** Function:    ThreadCondVar::~ThreadCondVar()
-**
-** Description: class destructor
-**
-** Returns:     none
-**
-*******************************************************************************/
-ThreadCondVar::~ThreadCondVar() { pthread_cond_destroy(&mCondVar); }
-
-/*******************************************************************************
-**
-** Function:    ThreadCondVar::wait()
-**
-** Description: wait on the mCondVar
-**
-** Returns:     none
-**
-*******************************************************************************/
-void ThreadCondVar::wait() {
-  pthread_cond_wait(&mCondVar, *this);
-  pthread_mutex_unlock(*this);
-}
-
-/*******************************************************************************
-**
-** Function:    ThreadCondVar::signal()
-**
-** Description: signal the mCondVar
-**
-** Returns:     none
-**
-*******************************************************************************/
-void ThreadCondVar::signal() {
-  AutoThreadMutex a(*this);
-  pthread_cond_signal(&mCondVar);
-}
-
-/*******************************************************************************
-**
-** Function:    AutoThreadMutex::AutoThreadMutex()
-**
-** Description: class constructor, automatically lock the mutex
-**
-** Returns:     none
-**
-*******************************************************************************/
-AutoThreadMutex::AutoThreadMutex(ThreadMutex& m) : mm(m) { mm.lock(); }
-
-/*******************************************************************************
-**
-** Function:    AutoThreadMutex::~AutoThreadMutex()
-**
-** Description: class destructor, automatically unlock the mutex
-**
-** Returns:     none
-**
-*******************************************************************************/
-AutoThreadMutex::~AutoThreadMutex() { mm.unlock(); }
