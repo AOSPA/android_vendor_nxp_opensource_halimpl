@@ -37,7 +37,3 @@ void NfccTransport::EnableFwDnldMode(__attribute__((unused)) bool mode) {
 }
 
 bool_t NfccTransport::IsFwDnldModeEnabled(void) { return false; }
-
-bool NfccTransport::Flushdata(__attribute__((unused)) phTmlNfc_Config_t pConfig) {
-    return true;
-}

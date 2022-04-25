@@ -83,6 +83,7 @@ class NfccI2cTransport : public NfccTransport {
    ****************************************************************************/
   void SemPost();
 
+  int Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead);
 
  public:
   /*****************************************************************************
@@ -217,17 +218,4 @@ class NfccI2cTransport : public NfccTransport {
    ** Returns           Current mode download/NCI
    ****************************************************************************/
   bool_t IsFwDnldModeEnabled(void);
-
-  /*******************************************************************************
-  **
-  ** Function         Flushdata
-  **
-  ** Description      Reads payload of FW rsp from NFCC device into given buffer
-  **
-  ** Parameters       pConfig     - hardware information
-  **
-  ** Returns          True(Success)/False(Fail)
-  **
-  *******************************************************************************/
-  bool Flushdata(phTmlNfc_Config_t pConfig);
 };

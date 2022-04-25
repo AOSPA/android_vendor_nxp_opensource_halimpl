@@ -765,21 +765,6 @@ int phNxpNciHal_MinOpen (){
   }
   memset(mGetCfg_info, 0x00, sizeof(phNxpNci_getCfg_info_t));
 
-  /*Configure transport layer for communication*/
-  if (NFCSTATUS_SUCCESS != phTmlNfc_ConfigTransport()) {
-    CONCURRENCY_UNLOCK();
-    return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
-  }
-
-  /*Flush pending read if availble*/
-  if (gsIsFirstHalMinOpen) {
-    if (!gpTransportObj->Flushdata(tTmlConfig)) {
-      NXPLOG_NCIHAL_E("Flushdata Failed");
-      CONCURRENCY_UNLOCK();
-      return phNxpNciHal_MinOpen_Clean(nfc_dev_node);
-    }
-  }
-
   /* Initialize TML layer */
   wConfigStatus = phTmlNfc_Init(&tTmlConfig);
   if (wConfigStatus != NFCSTATUS_SUCCESS) {
@@ -804,10 +789,11 @@ int phNxpNciHal_MinOpen (){
   }
 
   CONCURRENCY_UNLOCK();
+  const char context[] = "MinOpen";
   /* call read pending */
   status = phTmlNfc_Read(
       nxpncihal_ctrl.p_rsp_data, NCI_MAX_DATA_LEN,
-      (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, NULL);
+      (pphTmlNfc_TransactCompletionCb_t)&phNxpNciHal_read_complete, (void *)context);
   if (status != NFCSTATUS_PENDING) {
     NXPLOG_NCIHAL_E("TML Read status error status = %x", status);
     wConfigStatus = phTmlNfc_Shutdown_CleanUp();
