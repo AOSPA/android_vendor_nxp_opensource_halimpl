@@ -27,6 +27,7 @@
 #include <phNxpNciHal_ext.h>
 #include <phOsalNfc_Timer.h>
 #include <phTmlNfc.h>
+#include "phNfcDynamicProtection.h"
 #undef property_set
 #undef PROPERTY_VALUE_MAX
 #undef property_get
@@ -381,6 +382,8 @@ static bool phNxpNciHal_determineChipTypeDlMode(void) {
  *
  ******************************************************************************/
 void phNxpNciHal_RecoverFWTearDown(void) {
+  if(checkNfcSecureStatus())
+    return;
   uint8_t nfcc_recovery_support = 0x00;
   // status post boot completed
   const char* status = "Boot-completed";

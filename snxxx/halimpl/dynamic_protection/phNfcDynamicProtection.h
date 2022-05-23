@@ -44,12 +44,12 @@
 #include <dlfcn.h>
 
 #define NFC_DEV_NODE_NAME "/dev/nq-nci"
-#define NFC_SECURE_ZONE _IOW(0xE9, 0x0A, unsigned int)
+#define NFC_SECURE_ZONE _IOW(0xE9, 0x0A, uint32_t)
 
 typedef int32_t (*PeripheralStateCB)(const uint32_t peripheral, const uint8_t state);
 
 int8_t registerNfcDynamicProtection();
 uint8_t checkNfcSecureStatus();
 int notifyNfcDriver(int opt);
-
+int register_routine(uint32_t pUID);
 
