@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e3d765fb_bbc7f8b3",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1000469
+      },
+      "writtenOn": "2022-05-26T18:32:26Z",
+      "side": 1,
+      "message": "How about we keep\nNFC_PERMISSIONS_DIR ?\u003d $(TARGET_COPY_OUT_VENDOR)/etc/permissions\nhere so that we preserve CAF\u0027s default behaviour, in case someone wishes to include this makefile directly rather than using qcom/common ?",
+      "revId": "3bb258c85b2287db4d94cb5d4a030cfcffe23974",
+      "serverId": "3162e3d8-d894-470e-abd9-724f7b0effad"
+    }
+  ]
+}
