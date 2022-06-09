@@ -1150,6 +1150,8 @@ int phNxpNciHal_write_unlocked(uint16_t data_len, const uint8_t* p_data,
   }
 
   /* Create local copy of cmd_data */
+  if(data_len > NCI_MAX_DATA_LEN)
+    data_len = NCI_MAX_DATA_LEN;
   memcpy(nxpncihal_ctrl.p_cmd_data, p_data, data_len);
   nxpncihal_ctrl.cmd_len = data_len;
   write_unlocked_status = NFCSTATUS_FAILED;
@@ -1675,9 +1677,11 @@ int phNxpNciHal_core_initialized(uint16_t core_init_rsp_params_len,
       mEEPROM_info.request_type = EEPROM_AUTH_CMD_TIMEOUT;
       status = request_EEPROM(&mEEPROM_info);
       if (NFCSTATUS_SUCCESS == status) {
-        memcpy(&mGetCfg_info->auth_cmd_timeout, mEEPROM_info.buffer,
-               mEEPROM_info.bufflen);
-        mGetCfg_info->auth_cmd_timeoutlen = mEEPROM_info.bufflen;
+        if (mGetCfg_info != NULL) {
+          memcpy(&mGetCfg_info->auth_cmd_timeout, mEEPROM_info.buffer,
+                 mEEPROM_info.bufflen);
+          mGetCfg_info->auth_cmd_timeoutlen = mEEPROM_info.bufflen;
+        }
       }
     }
     NXPLOG_NCIHAL_D("Performing TVDD Settings");
@@ -3962,7 +3966,9 @@ NFCSTATUS phNxpNciHal_send_get_cfgs() {
     cfg_count++;
     retry_cnt = 0;
   }
-  mGetCfg_info->isGetcfg = false;
+  if (mGetCfg_info != NULL) {
+    mGetCfg_info->isGetcfg = false;
+  }
   return status;
 }
 

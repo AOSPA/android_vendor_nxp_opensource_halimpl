@@ -291,17 +291,16 @@ on_error:
   */
   mDeregisterPhCb = (deregisterNfcPhCBFnPtr)dlsym(mSecureLibInstance, "deregisterPeripheralCB");
 
-  if(mDeregisterPhCb == NULL) {
-    ALOGE("Error linking deregisterPeripheralCB\n");
+  if(mDeregisterPhCb != NULL) {
+    mDeregisterPhCb(mSecureModeContext);
   }
-
-  mDeregisterPhCb(mSecureModeContext);
 
   mGetPhState = NULL;
   mRegisterPhCb = NULL;
   mDeregisterPhCb = NULL;
   dlclose(mSecureLibInstance);
   mSecureLibInstance = NULL;
+  mSecureModeContext = NULL;
   status = -1;
   return status;
 }
