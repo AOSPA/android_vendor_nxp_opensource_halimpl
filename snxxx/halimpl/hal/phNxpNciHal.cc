@@ -41,6 +41,8 @@
 #include "phNxpNciHal_IoctlOperations.h"
 #include "phNxpNciHal_extOperations.h"
 
+#include "phNfcDynamicProtection.h"
+
 using android::base::StringPrintf;
 using namespace android::hardware::nfc::V1_1;
 using namespace android::hardware::nfc::V1_2;
@@ -665,6 +667,11 @@ int phNxpNciHal_MinOpen() {
   NFCSTATUS wConfigStatus = NFCSTATUS_SUCCESS;
   NFCSTATUS status = NFCSTATUS_SUCCESS;
   int dnld_retry_cnt = 0;
+
+  /*Check if NFC is in secure zone; If yes, return NFC Enable failed*/
+  if(checkNfcSecureStatus()) {
+    return NFCSTATUS_FAILED;
+  }
   NXPLOG_NCIHAL_D("phNxpNci_MinOpen(): enter");
 
   NfcHalAutoThreadMutex a(sHalFnLock);

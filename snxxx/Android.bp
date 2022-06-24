@@ -73,6 +73,7 @@ cc_library_shared {
         "halimpl/hal/phNxpNciHal_extOperations.cc",
         "halimpl/mifare/NxpMfcReader.cc",
         "halimpl/recovery/phNxpNciHal_Recovery.cc",
+        "halimpl/dynamic_protection/phNfcDynamicProtection.cc",
     ],
 
     local_include_dirs: [
@@ -90,6 +91,7 @@ cc_library_shared {
         "halimpl/mifare",
         "extns/impl/nxpnfc/2.0",
         "halimpl/recovery",
+        "halimpl/dynamic_protection",
     ],
 
     include_dirs: [
@@ -106,6 +108,7 @@ cc_library_shared {
         "halimpl/mifare",
         "halimpl/eseclients_extns/inc",
         "halimpl/recovery",
+        "halimpl/dynamic_protection",
     ],
 
     shared_libs: [
@@ -127,6 +130,8 @@ cc_library_shared {
     header_libs: [
         "libese_client_headers",
         "qti_nfc_kernel_headers",
+        "peripheralstate_headers",
+        "mink_headers",
     ],
 
     sanitize: {

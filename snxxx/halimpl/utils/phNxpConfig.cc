@@ -60,6 +60,7 @@
 #include <errno.h>
 #include "sparse_crc32.h"
 #include "phNqChipInfo.h"
+#include "phNfcDynamicProtection.h"
 
 #if GENERIC_TARGET
 const char alternative_config_path[] = "/data/vendor/nfc/";
@@ -744,7 +745,25 @@ int CNfcConfig::file_exist (const char* filename)
 CNfcConfig& CNfcConfig::GetInstance() {
   static CNfcConfig theInstance;
   int gconfigpathid=0;
+  static int reg_init = 0;
   char config_name_generic[MAX_DATA_CONFIG_PATH_LEN] = {'\0'};
+
+  /* Register NFC peripheral for with secure Libraries
+   * If registration is successful and get peripheral status fails, retry the sequence
+   */
+  while(reg_init == 0) {
+    if(registerNfcDynamicProtection() == 0) {
+      reg_init = 1;
+    } else {
+      ALOGD("NfcDynamicProtection register success and get peripheral status failed; Retry");
+      usleep(100000);
+    }
+  }
+  /*Check if NFC is in secure zone; If yes, return NFC Enable failed*/
+  if(checkNfcSecureStatus()) {
+    theInstance.size() == 0;
+    return theInstance;
+  }
 
   if (theInstance.size() == 0 && theInstance.mValidFile) {
     string strPath;
