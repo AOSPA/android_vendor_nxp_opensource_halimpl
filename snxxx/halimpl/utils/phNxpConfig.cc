@@ -295,7 +295,7 @@ static int read_line_from_file(const char *path, char *buf, size_t count)
  * @return Returns the length of buffer.
  */
 
-static int get_soc_info(char *buf, const char *soc_node_path1,
+int get_soc_info(char *buf, const char *soc_node_path1,
             const char *soc_node_path2)
 {
     int ret = 0;
@@ -314,6 +314,24 @@ static int get_soc_info(char *buf, const char *soc_node_path1,
         buf[ret - 1] = '\0';
 
     return ret;
+}
+
+bool secure_zone_support(void)
+{
+    int rc = 0;
+    int msm_id = 0;
+    char soc_info[MAX_SOC_INFO_NAME_LEN] = {'\0'};
+
+    rc = get_soc_info(soc_info, SYSFS_SOCID_PATH1, SYSFS_SOCID_PATH2);
+    if (rc < 0) {
+        ALOGE("get_soc_info(SOC_ID) fail!\n");
+        return DEFAULT_CONFIG;
+    }
+    msm_id = atoi(soc_info);
+    if ((msm_id == TARGET_SM_KAILUA) || (msm_id == TARGET_SMP_KAILUA))
+	return true;
+    else
+	return false;
 }
 
 /**
@@ -762,6 +780,7 @@ CNfcConfig& CNfcConfig::GetInstance() {
   static int reg_init = 0;
   char config_name_generic[MAX_DATA_CONFIG_PATH_LEN] = {'\0'};
 
+  if (secure_zone_support()) {
   /* Register NFC peripheral for with secure Libraries
    * If registration is successful and get peripheral status fails, retry the sequence
    */
@@ -773,11 +792,13 @@ CNfcConfig& CNfcConfig::GetInstance() {
       usleep(100000);
     }
   }
+
   /*Check if NFC is in secure zone; If yes, return NFC Enable failed*/
   if(checkNfcSecureStatus()) {
     theInstance.size() == 0;
     return theInstance;
   }
+ }
 
   if (theInstance.size() == 0 && theInstance.mValidFile) {
     string strPath;
