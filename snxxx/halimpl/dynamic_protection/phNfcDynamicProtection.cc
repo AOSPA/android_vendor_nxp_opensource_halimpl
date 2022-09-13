@@ -35,6 +35,7 @@
 #include "phNfcDynamicProtection.h"
 #include <phNxpNciHal_Adaptation.h>
 #include <phNxpNciHal.h>
+#include <phNxpNciHal_utils.h>
 #include "CPeripheralAccessControl.h"
 #include "peripheralStateUtils.h"
 
@@ -157,8 +158,11 @@ int32_t notifyNfcPeripheralEvent(const uint32_t Nfcperi, const uint8_t NfcSecure
       if(phSecureState == 0) {
         phSecureState = 1;
         if (nxpncihal_ctrl.halStatus != HAL_STATUS_CLOSE) {
-          /*Ideal condtions this should never be called, called only when TZ notifies before disabling the  NFC avoiding device crash*/
-          phNxpNciHal_close(false);
+          /*Ideal conditions this should never be called, called only when TZ notifies before disabling the  NFC to avoid NFC crash */
+          ALOGD("Received Secure Zone entry notifications from TZ during NFC active state; disable NFC\n");
+          (*nxpncihal_ctrl.p_nfc_stack_cback)(HAL_TZ_SECURE_ZONE_DISABLE_NFC_EVT, HAL_NFC_STATUS_OK);
+          /*wait untill NFC is closed*/
+          while(nxpncihal_ctrl.halStatus == HAL_STATUS_CLOSE) break;
         }
         result = notifyNfcDriver(phSecureState);
         if(result == -1) {
