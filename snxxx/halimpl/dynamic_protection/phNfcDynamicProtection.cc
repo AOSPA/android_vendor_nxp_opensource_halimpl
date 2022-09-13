@@ -137,8 +137,7 @@ int32_t notifyNfcPeripheralEvent(const uint32_t Nfcperi, const uint8_t NfcSecure
   */
   int32_t  result = 0;
   uint8_t curState = NfcSecureState;
-  ALOGD("%s: Received Notification from TZ...\n", __func__);
-  ALOGD("%s: HAL peripheral %d Entered into NfcSecureState %d\n", __func__, Nfcperi, NfcSecureState);
+  ALOGD("%s: Received Notification from TZ...\nHAL peripheral %d Entered into NfcSecureState %d\n", __func__, Nfcperi, NfcSecureState);
 
   if (NfcSecureState == STATE_RESET_CONNECTION) {
     /**
@@ -146,8 +145,30 @@ int32_t notifyNfcPeripheralEvent(const uint32_t Nfcperi, const uint8_t NfcSecure
     * state change notification
     */
     ALOGD("%s: Possible ssgtzd link got broken..\n", __func__);
-    curState = register_routine(pType);
-    ALOGD("Func %s: Peripheral[0x%x], Current State is [%d]\n", __func__,pType, NfcSecureState);
+    do {
+      curState = register_routine(pType);
+      if((curState == STATE_RESET_CONNECTION) && (mDeregisterPhCb != NULL)) {
+        /*De-register NFC Context with TZ before retrying registration*/
+        mDeregisterPhCb(mSecureModeContext);
+        mSecureModeContext = NULL;
+      }
+      else if(curState != STATE_RESET_CONNECTION && curState != STATE_NONSECURE && curState != STATE_SECURE) {
+        ALOGD("%s: Peripheral[0x%x] recieved wrong state [%d]\n", __func__, pType, curState);
+        return -1;
+      }
+      else if(mDeregisterPhCb == NULL) {
+        mDeregisterPhCb = (deregisterNfcPhCBFnPtr)dlsym(mSecureLibInstance, "deregisterPeripheralCB");
+        if(mDeregisterPhCb != NULL)
+          mDeregisterPhCb(mSecureModeContext);
+        mSecureModeContext = NULL;
+      }
+      else {
+        ALOGD("%s: Reached UNEXPECTED CONDITION", __func__);
+      }
+
+      ALOGD("mDeregisterPhCb Address 0x%x", mDeregisterPhCb);
+    } while(curState == STATE_RESET_CONNECTION);
+    ALOGD("%s: Peripheral[0x%x], Current State is [%d]\n", __func__, pType, curState);
   }
 
   switch(curState) {
@@ -250,23 +271,28 @@ int8_t registerNfcDynamicProtection(void)
     return -1;
   }
 
+  /*Find the address of registerPeripheralCB, getPeripheralState, deregisterPeripheralCB*/
   mRegisterPhCb = (registerNfcPhCBFnPtr)dlsym(mSecureLibInstance, "registerPeripheralCB");
-
   if(mRegisterPhCb == NULL) {
     ALOGE("Error linking registerPeripheralCB\n");
-    goto on_error;
+    goto link_error;
   }
 
   mGetPhState = (getNfcPhStatusFnPtr)dlsym(mSecureLibInstance, "getPeripheralState");
-
   if(mGetPhState == NULL) {
     ALOGE("Error linking getPeripheralState\n");
-    goto on_error;
+    goto link_error;
+  }
+
+  mDeregisterPhCb = (deregisterNfcPhCBFnPtr)dlsym(mSecureLibInstance, "deregisterPeripheralCB");
+  if(mDeregisterPhCb == NULL) {
+    ALOGE("Error linking mDeregisterPhCb\n");
+    goto link_error;
   }
 
   /*Register Peripheral*/
   if((pState = register_routine(pType)) == PRPHRL_ERROR)
-    goto on_error;
+    goto reg_error;
   ALOGD("%s: Callback registered to TZ and waiting for notification\n", __func__);
 
   if(pState ==  STATE_NONSECURE) {
@@ -288,22 +314,21 @@ int8_t registerNfcDynamicProtection(void)
   ALOGD("%s success", __func__);
   return status;
 
-on_error:
+reg_error:
   /*
   * Calling this function is must to clean up the
   * resources properly in lib
   */
   mDeregisterPhCb = (deregisterNfcPhCBFnPtr)dlsym(mSecureLibInstance, "deregisterPeripheralCB");
-
   if(mDeregisterPhCb != NULL) {
     mDeregisterPhCb(mSecureModeContext);
   }
-
-  mGetPhState = NULL;
-  mRegisterPhCb = NULL;
-  mDeregisterPhCb = NULL;
+link_error:
   dlclose(mSecureLibInstance);
   mSecureLibInstance = NULL;
+  mRegisterPhCb = NULL;
+  mGetPhState = NULL;
+  mDeregisterPhCb = NULL;
   mSecureModeContext = NULL;
   status = -1;
   return status;
