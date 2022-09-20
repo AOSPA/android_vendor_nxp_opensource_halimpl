@@ -382,12 +382,16 @@ static bool phNxpNciHal_determineChipTypeDlMode(void) {
  *
  ******************************************************************************/
 void phNxpNciHal_RecoverFWTearDown(void) {
-  if(checkNfcSecureStatus())
-    return;
+
   uint8_t nfcc_recovery_support = 0x00;
   // status post boot completed
   const char* status = "Boot-completed";
   char halInitStatus[PROPERTY_VALUE_MAX] = {0};
+
+  if (secure_zone_support()) {
+     if(checkNfcSecureStatus())
+     return;
+  }
 
   NXPLOG_NCIHAL_D("phNxpNciHal_RecoverFWTearDown(): enter \n");
   if (!GetNxpNumValue(NAME_NXP_NFCC_RECOVERY_SUPPORT, &nfcc_recovery_support,

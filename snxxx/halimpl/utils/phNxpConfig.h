@@ -54,6 +54,9 @@ int updateNxpConfigTimestamp();
 int updateNxpRfConfigTimestamp();
 void setNxpRfConfigPath(const char* name);
 void setNxpFwConfigPath();
+int get_soc_info(char *buf, const char *soc_node_path1,
+             const char *soc_node_path2);
+bool secure_zone_support(void);
 
 #ifdef __cplusplus
 };

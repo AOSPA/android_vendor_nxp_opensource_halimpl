@@ -35,6 +35,11 @@
  *  Copyright 2013-2021 NXP
  *
  ******************************************************************************/
+
+/******************************************************************************
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ ******************************************************************************/
  /**
   * @file phNxpConfig.cpp
   * @date 24 Aug 2016
@@ -137,6 +142,7 @@ typedef enum
 typedef enum
 {
   TARGET_GENERIC                       = 0x00,/**< new targets */
+  TARGET_SM_DIVAR                      = 518, /**< SM_DIVAR target */
   TARGET_SM_KAILUA                     = 519, /**< SM_KAILUA target */
   TARGET_SMP_KAILUA                    = 536, /**< SMP_KAILUA target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
@@ -289,7 +295,7 @@ static int read_line_from_file(const char *path, char *buf, size_t count)
  * @return Returns the length of buffer.
  */
 
-static int get_soc_info(char *buf, const char *soc_node_path1,
+int get_soc_info(char *buf, const char *soc_node_path1,
             const char *soc_node_path2)
 {
     int ret = 0;
@@ -308,6 +314,24 @@ static int get_soc_info(char *buf, const char *soc_node_path1,
         buf[ret - 1] = '\0';
 
     return ret;
+}
+
+bool secure_zone_support(void)
+{
+    int rc = 0;
+    int msm_id = 0;
+    char soc_info[MAX_SOC_INFO_NAME_LEN] = {'\0'};
+
+    rc = get_soc_info(soc_info, SYSFS_SOCID_PATH1, SYSFS_SOCID_PATH2);
+    if (rc < 0) {
+        ALOGE("get_soc_info(SOC_ID) fail!\n");
+        return DEFAULT_CONFIG;
+    }
+    msm_id = atoi(soc_info);
+    if ((msm_id == TARGET_SM_KAILUA) || (msm_id == TARGET_SMP_KAILUA))
+	return true;
+    else
+	return false;
 }
 
 /**
@@ -373,6 +397,10 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_GENERIC:
             config_id = CONFIG_GENERIC;
             break;
+        case TARGET_SM_DIVAR:
+            config_id = GENERIC_38_4_TYPE_SN1xx;
+            strlcpy(config_file, config_name_qrd_SN100_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
+            break;
         case TARGET_SM_KAILUA:
         case TARGET_SMP_KAILUA:
             if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
@@ -397,6 +425,10 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         {
         case TARGET_GENERIC:
             config_id = CONFIG_GENERIC;
+            break;
+        case TARGET_SM_DIVAR:
+            config_id = GENERIC_38_4_TYPE_SN1xx;
+            strlcpy(config_file, config_name_mtp_SN100_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
             break;
         case TARGET_SM_KAILUA:
         case TARGET_SMP_KAILUA:
@@ -748,6 +780,7 @@ CNfcConfig& CNfcConfig::GetInstance() {
   static int reg_init = 0;
   char config_name_generic[MAX_DATA_CONFIG_PATH_LEN] = {'\0'};
 
+  if (secure_zone_support()) {
   /* Register NFC peripheral for with secure Libraries
    * If registration is successful and get peripheral status fails, retry the sequence
    */
@@ -759,11 +792,13 @@ CNfcConfig& CNfcConfig::GetInstance() {
       usleep(100000);
     }
   }
+
   /*Check if NFC is in secure zone; If yes, return NFC Enable failed*/
   if(checkNfcSecureStatus()) {
     theInstance.size() == 0;
     return theInstance;
   }
+ }
 
   if (theInstance.size() == 0 && theInstance.mValidFile) {
     string strPath;

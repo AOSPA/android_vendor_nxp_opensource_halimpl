@@ -669,8 +669,10 @@ int phNxpNciHal_MinOpen() {
   int dnld_retry_cnt = 0;
 
   /*Check if NFC is in secure zone; If yes, return NFC Enable failed*/
-  if(checkNfcSecureStatus()) {
-    return NFCSTATUS_FAILED;
+  if (secure_zone_support()) {
+    if(checkNfcSecureStatus()) {
+      return NFCSTATUS_FAILED;
+    }
   }
   NXPLOG_NCIHAL_D("phNxpNci_MinOpen(): enter");
 
