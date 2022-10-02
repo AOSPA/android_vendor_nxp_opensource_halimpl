@@ -13,6 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ */
+
 #ifndef _PHNXPNCIHAL_H_
 #define _PHNXPNCIHAL_H_
 
@@ -315,6 +323,8 @@ typedef struct phNxpNciProfile_Control {
 #define NCIHAL_CMD_CODE_LEN_BYTE_OFFSET (2U)
 #define NCIHAL_CMD_CODE_BYTE_LEN (3U)
 
+/*NFC HAL secure zone event*/
+#define HAL_TZ_SECURE_ZONE_DISABLE_NFC_EVT 0xC1
 /******************** NCI HAL exposed functions *******************************/
 int phNxpNciHal_check_ncicmd_write_window(uint16_t cmd_len, uint8_t* p_cmd);
 void phNxpNciHal_request_control(void);

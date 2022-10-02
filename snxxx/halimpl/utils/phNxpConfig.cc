@@ -37,6 +37,7 @@
  ******************************************************************************/
 
 /******************************************************************************
+ * Changes from Qualcomm Innovation Center are provided under the following license:
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
@@ -793,7 +794,7 @@ CNfcConfig& CNfcConfig::GetInstance() {
     }
   }
 
-  /*Check if NFC is in secure zone; If yes, return NFC Enable failed*/
+  /*Check with TZ if NFC is in secure zone, If yes, do not enable to NFC*/
   if(checkNfcSecureStatus()) {
     theInstance.size() == 0;
     return theInstance;
