@@ -90,7 +90,7 @@ NxpNfc::setNxpTransitConfig(const ::android::hardware::hidl_string &strval)
   bool status = true;
   ALOGD("NxpNfc::setNxpTransitConfig Entry");
 
-  status = phNxpNciHal_setNxpTransitConfig((char *)strval.c_str());
+  status = phNxpNciHal_setNxpTransitConfig((char *)strval.c_str(),(uint64_t)strval.size());
 
   ALOGD("NxpNfc::setNxpTransitConfig Exit");
   return status;
