@@ -113,7 +113,7 @@ NFCSTATUS phNxpNciHal_resetEse(uint64_t resetType);
 ** Returns          bool.
 **
 *******************************************************************************/
-bool phNxpNciHal_setNxpTransitConfig(char *transitConfValue);
+bool phNxpNciHal_setNxpTransitConfig(char *transitConfValue, uint64_t transitConfValueLen);
 
 /*******************************************************************************
  **
