@@ -21,6 +21,12 @@
  *  limitations under the License.
  *
  ******************************************************************************/
+/******************************************************************************
+ *  Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ ******************************************************************************/
  /**
   * @file phNxpConfig.cpp
   * @date 24 Aug 2016
@@ -130,6 +136,7 @@ typedef enum
   TARGET_SM_NETRANI                    = 537, /**< SM_NETRANI target */
   TARGET_SM_PALIMA_LTE_ONLY            = 540, /**< SM_PALIMA_LTE_ONLY target */
   TARGET_SM_ALAKAI                     = 552, /**< SM_ALAKAI target */
+  TARGET_SM_CLARENCE                   = 568, /**< SM_CLARENCE target */
   TARGET_SM_TOFINO                     = 591, /**< SM_TOFINO target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
@@ -388,6 +395,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SMP_PALIMA:
         case TARGET_SM_PALIMA_LTE_ONLY:
         case TARGET_SM_TOFINO:
+        case TARGET_SM_CLARENCE:
             // SN110 or SN100
             config_id = QRD_TYPE_SN100;
             strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
@@ -428,6 +436,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SMP_PALIMA:
         case TARGET_SM_PALIMA_LTE_ONLY:
         case TARGET_SM_TOFINO:
+        case TARGET_SM_CLARENCE:
             // SN110 or SN100
             config_id = MTP_TYPE_SN100;
             strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
