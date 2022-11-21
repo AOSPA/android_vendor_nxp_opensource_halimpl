@@ -626,11 +626,10 @@ NFCSTATUS phNxpNciHal_resetEse(uint64_t resetType) {
  * Returns          bool.
  *
  ******************************************************************************/
-bool phNxpNciHal_setNxpTransitConfig(char *transitConfValue) {
+bool phNxpNciHal_setNxpTransitConfig(char *transitConfValue, uint64_t transitConfValueLen) {
   bool status = true;
   NXPLOG_NCIHAL_D("%s : Enter", __func__);
   std::string transitConfFileName = "/data/vendor/nfc/libnfc-nxpTransit.conf";
-  long transitConfValueLen = strlen(transitConfValue) + 1;
 
   if (transitConfValueLen > 1) {
     if (!WriteStringToFile(transitConfValue, transitConfFileName)) {
