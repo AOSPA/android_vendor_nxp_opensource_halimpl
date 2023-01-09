@@ -138,6 +138,7 @@ typedef enum
   TARGET_SM_ALAKAI                     = 552, /**< SM_ALAKAI target */
   TARGET_SM_CLARENCE                   = 568, /**< SM_CLARENCE target */
   TARGET_QCM_CLARENCE                  = 581, /**< QCM_CLARENCE IOT target */
+  TARGET_QCS_CLARENCE                  = 582, /**< QCS_CLARENCE IOT target */
   TARGET_SMP_CLARENCE                  = 602, /**< SMP_CLARENCE target */
   TARGET_SM_TOFINO                     = 591, /**< SM_TOFINO target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
@@ -400,6 +401,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SM_CLARENCE:
         case TARGET_SMP_CLARENCE:
         case TARGET_QCM_CLARENCE:
+        case TARGET_QCS_CLARENCE:
             // SN110 or SN100
             config_id = QRD_TYPE_SN100;
             strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
@@ -443,6 +445,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SM_CLARENCE:
         case TARGET_SMP_CLARENCE:
         case TARGET_QCM_CLARENCE:
+        case TARGET_QCS_CLARENCE:
             // SN110 or SN100
             config_id = MTP_TYPE_SN100;
             strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
