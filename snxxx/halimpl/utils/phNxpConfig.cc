@@ -144,6 +144,7 @@ typedef enum
 {
   TARGET_GENERIC                       = 0x00,/**< new targets */
   TARGET_SM_DIVAR                      = 518, /**< SM_DIVAR target */
+  TARGET_SM_DIVAR_IOT                  = 586, /**< SM_DIVAR_IOT target */
   TARGET_SM_KAILUA                     = 519, /**< SM_KAILUA target */
   TARGET_SMP_KAILUA                    = 536, /**< SMP_KAILUA target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
@@ -398,6 +399,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_GENERIC:
             config_id = CONFIG_GENERIC;
             break;
+        case TARGET_SM_DIVAR_IOT:
         case TARGET_SM_DIVAR:
             config_id = GENERIC_38_4_TYPE_SN1xx;
             strlcpy(config_file, config_name_qrd_SN100_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
@@ -427,6 +429,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_GENERIC:
             config_id = CONFIG_GENERIC;
             break;
+        case TARGET_SM_DIVAR_IOT:
         case TARGET_SM_DIVAR:
             config_id = GENERIC_38_4_TYPE_SN1xx;
             strlcpy(config_file, config_name_mtp_SN100_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
