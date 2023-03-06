@@ -385,6 +385,16 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SM_NETRANI:
         case TARGET_SMP_NETRANI:
         case TARGET_SM_NETRANI7:
+            if (!strncmp(nq_chip_info.nq_chipid, SN100_CHIP_ID, PROPERTY_VALUE_MAX)) {
+                // SN100 or SN110
+                config_id = QRD_TYPE_SN100;
+                strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            } else {
+                // SN220
+                config_id = GENERIC_TYPE_SN220;
+                strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
+            }
+            break;
         case TARGET_SM_ALAKAI:
             if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN220
@@ -431,6 +441,16 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SM_NETRANI:
         case TARGET_SMP_NETRANI:
         case TARGET_SM_NETRANI7:
+           if (!strncmp(nq_chip_info.nq_chipid, SN100_CHIP_ID, PROPERTY_VALUE_MAX)) {
+                // SN100 or SN110
+                config_id = MTP_TYPE_SN100;
+                strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            } else {
+                // SN220
+                config_id = GENERIC_TYPE_SN220;
+                strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
+            }
+            break;
         case TARGET_SM_ALAKAI:
             if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN220

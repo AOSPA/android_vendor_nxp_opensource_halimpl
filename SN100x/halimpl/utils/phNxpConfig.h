@@ -269,6 +269,12 @@ extern char Fw_Lib_Path[256];
 #define SN220_CHIP_ID "0xc1"
 
 /**
+ * @brief Defines the SN100 chip type.
+ */
+
+#define SN100_CHIP_ID "0xa4"
+
+/**
  *  @brief Defines whether debugging is enabled or disabled.
  */
 
