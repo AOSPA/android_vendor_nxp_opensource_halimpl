@@ -43,7 +43,7 @@ static void phnxpNciHal_partialClose();
 static NFCSTATUS phnxpNciHal_partialOpen();
 
 // property name for storing boot time init status
-const char* halInitProperty = "vendor.qti.nfc.";
+const char* halInitProperty = "vendor.nfc.min_firmware";
 
 /******************************************************************************
  * Function         getHalInitStatus
