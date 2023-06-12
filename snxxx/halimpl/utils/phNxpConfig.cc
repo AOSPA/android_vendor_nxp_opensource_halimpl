@@ -147,6 +147,7 @@ typedef enum
   TARGET_SM_DIVAR_IOT                  = 586, /**< SM_DIVAR_IOT target */
   TARGET_SM_KAILUA                     = 519, /**< SM_KAILUA target */
   TARGET_SMP_KAILUA                    = 536, /**< SMP_KAILUA target */
+  TARGET_SM_CAMANO                     = 608, /**< SM_CAMANO target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
 } TARGETTYPE;
@@ -416,6 +417,11 @@ int CNfcConfig::getconfiguration_id (char * config_file)
                 strlcpy(config_file, config_name_qrd_SN100_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
             }
             break;
+	case TARGET_SM_CAMANO:
+                 // SN220
+                 config_id = GENERIC_19_2_TYPE_SN220;
+                 strlcpy(config_file, config_name_SN220_19_2MHZ, MAX_DATA_CONFIG_PATH_LEN);
+	    break;
         default:
             config_id = QRD_TYPE_DEFAULT;
             strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
@@ -446,6 +452,11 @@ int CNfcConfig::getconfiguration_id (char * config_file)
                 strlcpy(config_file, config_name_mtp_SN100_38_4MHZ, MAX_DATA_CONFIG_PATH_LEN);
             }
             break;
+	case TARGET_SM_CAMANO:
+                 // SN220
+                 config_id = GENERIC_19_2_TYPE_SN220;
+                 strlcpy(config_file, config_name_SN220_19_2MHZ, MAX_DATA_CONFIG_PATH_LEN);
+	    break;
         default:
             config_id = MTP_TYPE_DEFAULT;
             strlcpy(config_file, config_name_mtp, MAX_DATA_CONFIG_PATH_LEN);
