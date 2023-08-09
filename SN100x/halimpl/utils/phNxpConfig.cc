@@ -21,6 +21,12 @@
  *  limitations under the License.
  *
  ******************************************************************************/
+/******************************************************************************
+ *  Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ ******************************************************************************/
  /**
   * @file phNxpConfig.cpp
   * @date 24 Aug 2016
@@ -128,8 +134,14 @@ typedef enum
   TARGET_SM_PALIMA                     = 530, /**< SM_PALIMA target */
   TARGET_SMP_PALIMA                    = 531, /**< SMP_PALIMA target */
   TARGET_SM_NETRANI                    = 537, /**< SM_NETRANI target */
+  TARGET_SMP_NETRANI                   = 583, /**< SMP_NETRANI target */
+  TARGET_SM_NETRANI7                   = 613, /**< SM_NETRANI7 target */
   TARGET_SM_PALIMA_LTE_ONLY            = 540, /**< SM_PALIMA_LTE_ONLY target */
   TARGET_SM_ALAKAI                     = 552, /**< SM_ALAKAI target */
+  TARGET_SM_CLARENCE                   = 568, /**< SM_CLARENCE target */
+  TARGET_QCM_CLARENCE                  = 581, /**< QCM_CLARENCE IOT target */
+  TARGET_QCS_CLARENCE                  = 582, /**< QCS_CLARENCE IOT target */
+  TARGET_SMP_CLARENCE                  = 602, /**< SMP_CLARENCE target */
   TARGET_SM_TOFINO                     = 591, /**< SM_TOFINO target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
@@ -371,6 +383,18 @@ int CNfcConfig::getconfiguration_id (char * config_file)
             strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
             break;
         case TARGET_SM_NETRANI:
+        case TARGET_SMP_NETRANI:
+        case TARGET_SM_NETRANI7:
+            if (!strncmp(nq_chip_info.nq_chipid, SN100_CHIP_ID, PROPERTY_VALUE_MAX)) {
+                // SN100 or SN110
+                config_id = QRD_TYPE_SN100;
+                strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            } else {
+                // SN220
+                config_id = GENERIC_TYPE_SN220;
+                strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
+            }
+            break;
         case TARGET_SM_ALAKAI:
             if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN220
@@ -388,6 +412,10 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SMP_PALIMA:
         case TARGET_SM_PALIMA_LTE_ONLY:
         case TARGET_SM_TOFINO:
+        case TARGET_SM_CLARENCE:
+        case TARGET_SMP_CLARENCE:
+        case TARGET_QCM_CLARENCE:
+        case TARGET_QCS_CLARENCE:
             // SN110 or SN100
             config_id = QRD_TYPE_SN100;
             strlcpy(config_file, config_name_qrd_SN100, MAX_DATA_CONFIG_PATH_LEN);
@@ -411,6 +439,18 @@ int CNfcConfig::getconfiguration_id (char * config_file)
             strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
             break;
         case TARGET_SM_NETRANI:
+        case TARGET_SMP_NETRANI:
+        case TARGET_SM_NETRANI7:
+           if (!strncmp(nq_chip_info.nq_chipid, SN100_CHIP_ID, PROPERTY_VALUE_MAX)) {
+                // SN100 or SN110
+                config_id = MTP_TYPE_SN100;
+                strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
+            } else {
+                // SN220
+                config_id = GENERIC_TYPE_SN220;
+                strlcpy(config_file, config_name_generic_SN220, MAX_DATA_CONFIG_PATH_LEN);
+            }
+            break;
         case TARGET_SM_ALAKAI:
             if (!strncmp(nq_chip_info.nq_chipid, SN220_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN220
@@ -428,6 +468,10 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SMP_PALIMA:
         case TARGET_SM_PALIMA_LTE_ONLY:
         case TARGET_SM_TOFINO:
+        case TARGET_SM_CLARENCE:
+        case TARGET_SMP_CLARENCE:
+        case TARGET_QCM_CLARENCE:
+        case TARGET_QCS_CLARENCE:
             // SN110 or SN100
             config_id = MTP_TYPE_SN100;
             strlcpy(config_file, config_name_mtp_SN100, MAX_DATA_CONFIG_PATH_LEN);
