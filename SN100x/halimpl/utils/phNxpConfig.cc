@@ -137,6 +137,7 @@ typedef enum
   TARGET_SCP_NETRANI                   = 583, /**< SCP_NETRANI target */
   TARGET_SCQ_NETRANI                   = 631, /**< SCQ_NETRANI target*/
   TARGET_SM_NETRANI7                   = 613, /**< SM_NETRANI7 target */
+  TARGET_SCP_NETRANI7                  = 638, /**< SCP_NETRANI7 target */
   TARGET_SM_PALIMA_LTE_ONLY            = 540, /**< SM_PALIMA_LTE_ONLY target */
   TARGET_SM_ALAKAI                     = 552, /**< SM_ALAKAI target */
   TARGET_SM_CLARENCE                   = 568, /**< SM_CLARENCE target */
@@ -387,6 +388,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SCP_NETRANI:
         case TARGET_SCQ_NETRANI:
         case TARGET_SM_NETRANI7:
+        case TARGET_SCP_NETRANI7:
             if (!strncmp(nq_chip_info.nq_chipid, SN100_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN100 or SN110
                 config_id = QRD_TYPE_SN100;
@@ -444,6 +446,7 @@ int CNfcConfig::getconfiguration_id (char * config_file)
         case TARGET_SCP_NETRANI:
         case TARGET_SCQ_NETRANI:
         case TARGET_SM_NETRANI7:
+        case TARGET_SCP_NETRANI7:
            if (!strncmp(nq_chip_info.nq_chipid, SN100_CHIP_ID, PROPERTY_VALUE_MAX)) {
                 // SN100 or SN110
                 config_id = MTP_TYPE_SN100;
