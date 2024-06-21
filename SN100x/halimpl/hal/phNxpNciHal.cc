@@ -910,8 +910,9 @@ int phNxpNciHal_open(nfc_stack_callback_t* p_cback,
 #endif
   if (nxpncihal_ctrl.halStatus == HAL_STATUS_OPEN) {
     NXPLOG_NCIHAL_D("phNxpNciHal_open already open");
-    return NFCSTATUS_SUCCESS;
-  }else if(nxpncihal_ctrl.halStatus == HAL_STATUS_CLOSE){
+    phNxpNciHal_open_complete(wConfigStatus);
+    return wConfigStatus;
+  } else if (nxpncihal_ctrl.halStatus == HAL_STATUS_CLOSE) {
     memset(&nxpncihal_ctrl, 0x00, sizeof(nxpncihal_ctrl));
     nxpncihal_ctrl.p_nfc_stack_cback = p_cback;
     nxpncihal_ctrl.p_nfc_stack_data_cback = p_data_cback;
